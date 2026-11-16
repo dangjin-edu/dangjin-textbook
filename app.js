@@ -1053,7 +1053,7 @@ function applyZoomAndPan() {
 
 let zoomRenderTimer = null;
 function setZoom(nextZoom) {
-  state.zoom = Math.min(2.2, Math.max(0.6, Number(nextZoom.toFixed(2))));
+  state.zoom = Math.min(2.4, Math.max(0.6, Number(nextZoom.toFixed(2))));
   if (state.zoom <= 1) {
     state.panX = 0;
     state.panY = 0;
@@ -1115,6 +1115,38 @@ function setupStagePanning() {
     window.addEventListener('pointerup', onUp);
     window.addEventListener('pointercancel', onUp);
   });
+
+  // Mouse wheel zoom directly on the book stage (cursor-anchored)
+  el.bookStage.addEventListener(
+    'wheel',
+    (e) => {
+      if (!el.contentModal.hidden) return;
+      if (!e.deltaY) return;
+      e.preventDefault();
+
+      const oldZoom = state.zoom;
+      const step = e.deltaY < 0 ? 0.1 : -0.1;
+      const nextZoom = Math.min(2.4, Math.max(0.6, Number((oldZoom + step).toFixed(2))));
+      if (nextZoom === oldZoom) return;
+
+      if (nextZoom <= 1) {
+        state.panX = 0;
+        state.panY = 0;
+      } else {
+        const rect = el.bookStage.getBoundingClientRect();
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 2;
+        const mx = e.clientX - cx;
+        const my = e.clientY - cy;
+        const ratio = nextZoom / oldZoom;
+        state.panX = Number((mx - (mx - state.panX) * ratio).toFixed(1));
+        state.panY = Number((my - (my - state.panY) * ratio).toFixed(1));
+      }
+
+      setZoom(nextZoom);
+    },
+    { passive: false }
+  );
 }
 
 let pointerDownOnEmptyOverlay = false;
