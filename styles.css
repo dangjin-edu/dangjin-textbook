@@ -434,6 +434,165 @@ body {
   border-radius: 999px;
 }
 
+/* Table of Contents Drawer */
+.toc-drawer {
+  width: 270px;
+}
+
+.toc-empty {
+  padding: 20px 12px;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  text-align: center;
+  line-height: 1.6;
+}
+
+.toc-item-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.toc-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+  background: #ffffff;
+  color: var(--text-main);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.14s ease, border-color 0.14s ease;
+}
+
+.toc-item:hover {
+  background: #eff6ff;
+  border-color: #93c5fd;
+}
+
+.toc-item--unit {
+  background: #f8fafc;
+  border-left: 3.5px solid var(--primary);
+}
+
+.toc-item--subunit {
+  width: calc(100% - 14px);
+  margin-left: 14px;
+  padding: 6px 10px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #334155;
+}
+
+.toc-item.is-active {
+  background: var(--primary-soft);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.toc-item__title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.toc-item__page {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  background: #e2e8f0;
+  padding: 2px 7px;
+  border-radius: 999px;
+}
+
+.toc-item-controls {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+  padding-right: 2px;
+}
+
+.toc-mini-btn {
+  border: 1px solid var(--border-subtle);
+  background: #fff;
+  color: #475569;
+  border-radius: 5px;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 6px;
+  cursor: pointer;
+}
+
+.toc-mini-btn:hover {
+  background: #f1f5f9;
+  color: var(--text-main);
+}
+
+.toc-mini-btn--del {
+  color: #b91c1c;
+}
+
+.toc-editor-form {
+  border-top: 1px solid var(--border-subtle);
+  padding: 10px 12px;
+  background: #f8fafc;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.toc-editor-title {
+  font-size: 12px;
+  font-weight: 800;
+  color: #5b21b6;
+}
+
+.toc-editor-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.toc-editor-form select,
+.toc-editor-form input {
+  font-family: inherit;
+  font-size: 12.5px;
+  padding: 6px 8px;
+  border-radius: 7px;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: var(--text-main);
+}
+
+.toc-editor-row select {
+  flex: 1;
+}
+
+.toc-editor-row input[type="number"] {
+  width: 66px;
+}
+
+.toc-editor-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.toc-editor-actions .btn {
+  flex: 1;
+  justify-content: center;
+}
+
 /* Book Stage */
 .book-stage {
   flex: 1;

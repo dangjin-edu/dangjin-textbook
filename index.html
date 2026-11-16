@@ -127,7 +127,32 @@
 
     <!-- Main Workspace -->
     <main class="workspace">
-      <!-- Thumbnail / Page Management Drawer -->
+      <!-- Table of Contents Drawer (Observer + Editor) -->
+      <aside id="tocDrawer" class="thumbnail-drawer toc-drawer" hidden>
+        <div class="drawer-header">
+          <strong>목차 (차례)</strong>
+          <button id="closeTocDrawerBtn" class="icon-btn" type="button" aria-label="닫기">✕</button>
+        </div>
+        <div id="tocList" class="thumbnail-list toc-list"></div>
+        <form id="tocEditorForm" class="toc-editor-form" hidden>
+          <div class="toc-editor-title">목차 항목 추가</div>
+          <div class="toc-editor-row">
+            <select id="tocLevelInput" aria-label="단원 구분">
+              <option value="unit">대단원</option>
+              <option value="subunit">소단원</option>
+            </select>
+            <input id="tocPageInput" type="number" min="1" step="1" placeholder="쪽수" aria-label="이동 페이지" />
+            <button id="tocUseCurrentPageBtn" class="link-btn" type="button" title="현재 보고 있는 페이지 번호 넣기">현재쪽</button>
+          </div>
+          <input id="tocTitleInput" type="text" placeholder="예: 1. 우리가 사는 곳" aria-label="단원 제목" />
+          <div class="toc-editor-actions">
+            <button id="tocSaveBtn" class="btn btn--secondary" type="submit">목차 추가</button>
+            <button id="tocCancelEditBtn" class="btn btn--ghost" type="button" hidden>취소</button>
+          </div>
+        </form>
+      </aside>
+
+      <!-- Thumbnail / Page Management Drawer (Editor-only) -->
       <aside id="thumbnailDrawer" class="thumbnail-drawer" hidden>
         <div class="drawer-header">
           <strong>페이지 관리</strong>
@@ -343,8 +368,12 @@
     <!-- Bottom Viewer Controls Bar -->
     <footer class="bottom-bar">
       <div class="bottom-bar__group">
-        <button id="toggleDrawerBtn" class="tool-icon-btn" type="button" title="페이지 목록 / 삭제 관리">
+        <button id="toggleTocBtn" class="tool-icon-btn" type="button" title="목차(차례) 열기">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        </button>
+        <button id="togglePageMgrBtn" class="tool-icon-btn" type="button" title="페이지 관리 (삭제/복구)" hidden>
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg>
+          <span>페이지</span>
         </button>
         <button id="zoomOutBtn" class="tool-icon-btn" type="button" title="축소">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>

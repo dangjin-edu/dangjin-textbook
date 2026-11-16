@@ -27,6 +27,8 @@ const state = {
   pdfDoc: null,
   pageAspectRatio: 1 / 1.32,
   hotspots: [],
+  tocItems: [],
+  editingTocId: null,
   revealedAnswers: new Set(),
   activeTool: null, // 'video' | 'article' | 'answer_text' | 'answer_image' | 'toc' | 'jump_area' | null
   selectedId: null,
@@ -56,12 +58,23 @@ const el = {
   applyPdfPathBtn: document.getElementById('applyPdfPathBtn'),
   editorHint: document.getElementById('editorHint'),
   toolPills: Array.from(document.querySelectorAll('.tool-pill')),
+  tocDrawer: document.getElementById('tocDrawer'),
+  closeTocDrawerBtn: document.getElementById('closeTocDrawerBtn'),
+  tocList: document.getElementById('tocList'),
+  tocEditorForm: document.getElementById('tocEditorForm'),
+  tocLevelInput: document.getElementById('tocLevelInput'),
+  tocPageInput: document.getElementById('tocPageInput'),
+  tocUseCurrentPageBtn: document.getElementById('tocUseCurrentPageBtn'),
+  tocTitleInput: document.getElementById('tocTitleInput'),
+  tocSaveBtn: document.getElementById('tocSaveBtn'),
+  tocCancelEditBtn: document.getElementById('tocCancelEditBtn'),
   thumbnailDrawer: document.getElementById('thumbnailDrawer'),
   thumbnailList: document.getElementById('thumbnailList'),
   deletedPagesSection: document.getElementById('deletedPagesSection'),
   deletedPagesList: document.getElementById('deletedPagesList'),
   restoreAllPagesBtn: document.getElementById('restoreAllPagesBtn'),
-  toggleDrawerBtn: document.getElementById('toggleDrawerBtn'),
+  toggleTocBtn: document.getElementById('toggleTocBtn'),
+  togglePageMgrBtn: document.getElementById('togglePageMgrBtn'),
   closeDrawerBtn: document.getElementById('closeDrawerBtn'),
   bookStage: document.getElementById('bookStage'),
   bookZoomWrap: document.getElementById('bookZoomWrap'),
@@ -201,6 +214,9 @@ function loadSavedState() {
     if (typeof parsed.pdfUrl === 'string') {
       state.pdfUrl = parsed.pdfUrl;
     }
+    if (Array.isArray(parsed.tocItems)) {
+      state.tocItems = parsed.tocItems;
+    }
     if (Array.isArray(parsed.activePages) && parsed.activePages.length > 0 && !state.pdfDoc) {
       const valid = parsed.activePages.filter((p) => p >= 1 && p <= window.TEXTBOOK_SAMPLE.totalPages);
       if (valid.length > 0) {
@@ -220,6 +236,7 @@ function persistState() {
         bookTitle: state.bookTitle,
         pdfUrl: state.pdfUrl,
         activePages: state.activePages,
+        tocItems: state.tocItems,
         hotspots: state.hotspots
       })
     );
@@ -260,10 +277,14 @@ function setMode(mode) {
   el.enterEditorBtn.hidden = isEditor;
   el.cloudStatusBadge.hidden = !isEditor;
   el.inspectorPanel.hidden = !isEditor;
+  el.togglePageMgrBtn.hidden = !isEditor;
+  el.tocEditorForm.hidden = !isEditor;
   el.bookTitleInput.readOnly = !isEditor;
   updateCloudUi();
 
   if (!isEditor) {
+    el.thumbnailDrawer.hidden = true;
+    resetTocForm();
     selectTool(null);
     selectHotspot(null);
   } else {
@@ -273,6 +294,7 @@ function setMode(mode) {
   }
   renderHotspots();
   renderThumbnails();
+  renderTocDrawer();
 }
 
 async function handleEnterEditorClick() {
@@ -1259,6 +1281,7 @@ function renderHotspots() {
   renderOverlay(el.leftOverlay, leftPage, el.leftLineSvg);
   renderOverlay(el.rightOverlay, rightPage, el.rightLineSvg);
   renderThumbnails();
+  renderTocDrawer();
 }
 
 async function renderSlot(side, pdfPageNum, displayNum) {
@@ -1385,6 +1408,111 @@ function renderThumbnails() {
     row.appendChild(restoreBtn);
     el.deletedPagesList.appendChild(row);
   }
+}
+
+function resetTocForm() {
+  state.editingTocId = null;
+  el.tocLevelInput.value = 'unit';
+  el.tocPageInput.value = '';
+  el.tocTitleInput.value = '';
+  el.tocSaveBtn.textContent = '목차 추가';
+  el.tocCancelEditBtn.hidden = true;
+}
+
+function renderTocDrawer() {
+  if (el.tocDrawer.hidden) return;
+  const { leftIndex, rightIndex } = getVisiblePages();
+  const visiblePageNums = new Set([leftIndex + 1, rightIndex >= 0 ? rightIndex + 1 : -1]);
+  el.tocList.innerHTML = '';
+
+  if (state.tocItems.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'toc-empty';
+    empty.textContent =
+      state.mode === 'editor'
+        ? '아직 등록된 목차가 없습니다. 아래에서 대단원/소단원 제목과 쪽수를 추가해 주세요.'
+        : '등록된 목차가 아직 없습니다.';
+    el.tocList.appendChild(empty);
+    return;
+  }
+
+  state.tocItems.forEach((item, index) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'toc-item-wrap';
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    const levelClass = item.level === 'subunit' ? 'toc-item--subunit' : 'toc-item--unit';
+    btn.className = `toc-item ${levelClass}`;
+    if (visiblePageNums.has(Number(item.page))) {
+      btn.classList.add('is-active');
+    }
+    btn.innerHTML = `<span class="toc-item__title">${escapeHtml(item.title)}</span><span class="toc-item__page">${item.page}쪽</span>`;
+    btn.title = `${item.title} (${item.page}쪽으로 이동)`;
+    btn.addEventListener('click', () => goToDisplayPage(item.page));
+    wrap.appendChild(btn);
+
+    if (state.mode === 'editor') {
+      const controls = document.createElement('div');
+      controls.className = 'toc-item-controls';
+
+      const upBtn = document.createElement('button');
+      upBtn.type = 'button';
+      upBtn.className = 'toc-mini-btn';
+      upBtn.textContent = '↑';
+      upBtn.disabled = index === 0;
+      upBtn.addEventListener('click', () => {
+        if (index === 0) return;
+        const [movedItem] = state.tocItems.splice(index, 1);
+        state.tocItems.splice(index - 1, 0, movedItem);
+        persistState();
+        renderTocDrawer();
+      });
+
+      const downBtn = document.createElement('button');
+      downBtn.type = 'button';
+      downBtn.className = 'toc-mini-btn';
+      downBtn.textContent = '↓';
+      downBtn.disabled = index === state.tocItems.length - 1;
+      downBtn.addEventListener('click', () => {
+        if (index >= state.tocItems.length - 1) return;
+        const [movedItem] = state.tocItems.splice(index, 1);
+        state.tocItems.splice(index + 1, 0, movedItem);
+        persistState();
+        renderTocDrawer();
+      });
+
+      const editBtn = document.createElement('button');
+      editBtn.type = 'button';
+      editBtn.className = 'toc-mini-btn';
+      editBtn.textContent = '수정';
+      editBtn.addEventListener('click', () => {
+        state.editingTocId = item.id;
+        el.tocLevelInput.value = item.level === 'subunit' ? 'subunit' : 'unit';
+        el.tocPageInput.value = String(item.page);
+        el.tocTitleInput.value = item.title;
+        el.tocSaveBtn.textContent = '수정 저장';
+        el.tocCancelEditBtn.hidden = false;
+        el.tocTitleInput.focus();
+      });
+
+      const delBtn = document.createElement('button');
+      delBtn.type = 'button';
+      delBtn.className = 'toc-mini-btn toc-mini-btn--del';
+      delBtn.textContent = '삭제';
+      delBtn.addEventListener('click', () => {
+        state.tocItems = state.tocItems.filter((t) => t.id !== item.id);
+        if (state.editingTocId === item.id) resetTocForm();
+        persistState();
+        renderTocDrawer();
+      });
+
+      controls.append(upBtn, downBtn, editBtn, delBtn);
+      wrap.appendChild(controls);
+    }
+
+    el.tocList.appendChild(wrap);
+  });
 }
 
 function deletePageAt(indexInActive) {
@@ -1781,6 +1909,7 @@ async function handleCloudSave() {
     pdfUrl: (el.pdfPathInput.value || state.pdfUrl || '').trim(),
     totalRawPages: state.totalRawPages,
     activePages: state.activePages,
+    tocItems: state.tocItems,
     hotspots: cleanHotspots
   };
 
@@ -1857,6 +1986,9 @@ async function loadFromCloud() {
     if (Array.isArray(data.activePages) && data.activePages.length > 0) {
       state.activePages = data.activePages;
     }
+    if (Array.isArray(data.tocItems)) {
+      state.tocItems = data.tocItems;
+    }
     if (Array.isArray(data.hotspots)) {
       state.hotspots = data.hotspots;
     }
@@ -1885,6 +2017,7 @@ function exportJson() {
     title: state.bookTitle,
     totalRawPages: state.totalRawPages,
     activePages: state.activePages,
+    tocItems: state.tocItems,
     exportedAt: new Date().toISOString(),
     hotspots: state.hotspots
   };
@@ -1895,7 +2028,7 @@ function exportJson() {
   a.download = `${state.bookTitle || 'textbook'}-buttons.json`;
   a.click();
   URL.revokeObjectURL(url);
-  showToast('버튼 배치 및 페이지 구성 JSON을 저장했습니다.');
+  showToast('버튼 배치 및 목차·페이지 구성 JSON을 저장했습니다.');
 }
 
 async function importJson(file) {
@@ -1907,6 +2040,9 @@ async function importJson(file) {
       throw new Error('Invalid format');
     }
     state.hotspots = data.hotspots;
+    if (Array.isArray(data.tocItems)) {
+      state.tocItems = data.tocItems;
+    }
     if (data.title) {
       state.bookTitle = data.title;
       el.bookTitleInput.value = data.title;
@@ -2260,12 +2396,70 @@ function bindEvents() {
     renderHotspots();
   });
 
-  el.toggleDrawerBtn.addEventListener('click', () => {
-    el.thumbnailDrawer.hidden = !el.thumbnailDrawer.hidden;
-    renderThumbnails();
+  el.toggleTocBtn.addEventListener('click', () => {
+    const nextOpen = el.tocDrawer.hidden;
+    el.tocDrawer.hidden = !nextOpen;
+    if (nextOpen) {
+      el.thumbnailDrawer.hidden = true;
+      renderTocDrawer();
+    }
+  });
+  el.closeTocDrawerBtn.addEventListener('click', () => {
+    el.tocDrawer.hidden = true;
+  });
+
+  el.togglePageMgrBtn.addEventListener('click', () => {
+    if (state.mode !== 'editor') return;
+    const nextOpen = el.thumbnailDrawer.hidden;
+    el.thumbnailDrawer.hidden = !nextOpen;
+    if (nextOpen) {
+      el.tocDrawer.hidden = true;
+      renderThumbnails();
+    }
   });
   el.closeDrawerBtn.addEventListener('click', () => {
     el.thumbnailDrawer.hidden = true;
+  });
+
+  el.tocUseCurrentPageBtn.addEventListener('click', () => {
+    const { leftIndex } = getVisiblePages();
+    el.tocPageInput.value = String(leftIndex + 1);
+  });
+
+  el.tocCancelEditBtn.addEventListener('click', resetTocForm);
+
+  el.tocEditorForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const title = el.tocTitleInput.value.trim();
+    const pageNum = Math.max(1, Math.round(Number(el.tocPageInput.value) || 1));
+    const level = el.tocLevelInput.value === 'subunit' ? 'subunit' : 'unit';
+    if (!title) {
+      showToast('단원 또는 소단원 제목을 입력해 주세요.');
+      el.tocTitleInput.focus();
+      return;
+    }
+
+    if (state.editingTocId) {
+      const target = state.tocItems.find((t) => t.id === state.editingTocId);
+      if (target) {
+        target.level = level;
+        target.title = title;
+        target.page = pageNum;
+      }
+      showToast('목차 항목을 수정했습니다.');
+    } else {
+      state.tocItems.push({
+        id: `toc-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        level,
+        title,
+        page: pageNum
+      });
+      showToast('목차 항목을 추가했습니다.');
+    }
+
+    resetTocForm();
+    persistState();
+    renderTocDrawer();
   });
 
   el.fullscreenBtn.addEventListener('click', () => {
