@@ -72,6 +72,8 @@ const el = {
   rightCanvas: document.getElementById('rightCanvas'),
   leftSamplePage: document.getElementById('leftSamplePage'),
   rightSamplePage: document.getElementById('rightSamplePage'),
+  leftLineSvg: document.getElementById('leftLineSvg'),
+  rightLineSvg: document.getElementById('rightLineSvg'),
   leftOverlay: document.getElementById('leftOverlay'),
   rightOverlay: document.getElementById('rightOverlay'),
   leftPageNum: document.getElementById('leftPageNum'),
@@ -126,6 +128,15 @@ const el = {
   answerFieldGroup: document.getElementById('answerFieldGroup'),
   answerImageGroup: document.getElementById('answerImageGroup'),
   answerStyleGroup: document.getElementById('answerStyleGroup'),
+  lineSettingsGroup: document.getElementById('lineSettingsGroup'),
+  propLineColor: document.getElementById('propLineColor'),
+  propLineWidth: document.getElementById('propLineWidth'),
+  propLineWidthVal: document.getElementById('propLineWidthVal'),
+  lineCoordsHint: document.getElementById('lineCoordsHint'),
+  crosswordSettingsGroup: document.getElementById('crosswordSettingsGroup'),
+  propCwDirection: document.getElementById('propCwDirection'),
+  propCwColor: document.getElementById('propCwColor'),
+  cwBoxSizeLabel: document.getElementById('cwBoxSizeLabel'),
   testHotspotBtn: document.getElementById('testHotspotBtn'),
   deleteHotspotBtn: document.getElementById('deleteHotspotBtn'),
   contentModal: document.getElementById('contentModal'),
@@ -302,6 +313,10 @@ function selectTool(tool) {
     el.editorHint.textContent = '페이지에서 차례 버튼을 놓을 위치를 클릭하세요.';
   } else if (state.activeTool === 'jump_area') {
     el.editorHint.textContent = '차례 등에서 이동용 투명 버튼을 놓을 위치를 클릭하세요.';
+  } else if (state.activeTool === 'line_answer') {
+    el.editorHint.textContent = '선 잇기 시작점(?)을 놓을 위치를 클릭하세요.';
+  } else if (state.activeTool === 'crossword_answer') {
+    el.editorHint.textContent = '가로/세로 낱말 칸을 놓을 위치를 클릭하세요.';
   } else {
     el.editorHint.textContent =
       '도구 선택 후 페이지를 클릭하세요. 기존 버튼은 클릭해 편집하거나 드래그로 이동합니다.';
@@ -310,7 +325,7 @@ function selectTool(tool) {
 
 // Updates selection WITHOUT destroying DOM nodes (critical for pointer drag!)
 function syncSelectionClasses() {
-  document.querySelectorAll('.hotspot-node').forEach((node) => {
+  document.querySelectorAll('.hotspot-node, .line-end-handle').forEach((node) => {
     node.classList.toggle('is-selected', state.mode === 'editor' && node.dataset.id === state.selectedId);
   });
 }
@@ -350,21 +365,39 @@ function syncInspectorForm(hs) {
   const isArticle = hs.type === 'article';
   const isPageNav = hs.type === 'toc' || hs.type === 'jump_area';
   const isJumpArea = hs.type === 'jump_area';
+  const isLine = hs.type === 'line_answer';
+  const isCrossword = hs.type === 'crossword_answer';
 
-  el.urlFieldGroup.hidden = isAnswer || isPageNav;
+  el.urlFieldGroup.hidden = isAnswer || isPageNav || isLine || isCrossword;
   el.noteFieldGroup.hidden = !isArticle;
-  el.answerFieldGroup.hidden = !isAnswer;
-  el.propAnswerLabel.textContent = isImageAnswer ? '정답 이미지 하단 설명 (선택)' : '정답 텍스트';
-  el.propAnswer.placeholder = isImageAnswer ? '예: 아래 설명 참고 (비워둬도 됨)' : '예: 병원';
+  el.answerFieldGroup.hidden = !isAnswer && !isCrossword;
+  el.propAnswerLabel.textContent = isCrossword
+    ? '정답 낱말 (글자 수만큼 칸이 생성됩니다)'
+    : isImageAnswer
+      ? '정답 이미지 하단 설명 (선택)'
+      : '정답 텍스트';
+  el.propAnswer.placeholder = isCrossword ? '예: 당진시' : isImageAnswer ? '예: 아래 설명 참고 (비워둬도 됨)' : '예: 병원';
   el.answerImageGroup.hidden = !isImageAnswer;
   el.answerStyleGroup.hidden = !isAnswer;
   el.targetPageGroup.hidden = !isPageNav;
   el.jumpSizeGroup.hidden = !isJumpArea;
-  el.sizeFieldGroup.hidden = isJumpArea;
+  el.lineSettingsGroup.hidden = !isLine;
+  el.crosswordSettingsGroup.hidden = !isCrossword;
+  el.sizeFieldGroup.hidden = isJumpArea || isCrossword;
   el.propUrlLabel.textContent = hs.type === 'video' ? '유튜브 / 영상 URL' : '신문기사 / 웹페이지 URL';
 
   if (isJumpArea) {
     el.jumpBoxSizeLabel.textContent = `영역 크기: 가로 ${Math.round(hs.boxWidth || 38)}% × 세로 ${Math.round(hs.boxHeight || 6)}% (모서리 ↘ 드래그로 조절)`;
+  }
+  if (isLine) {
+    el.propLineColor.value = hs.lineColor || '#ef4444';
+    el.propLineWidth.value = String(hs.lineWidth || 4);
+    el.propLineWidthVal.textContent = String(hs.lineWidth || 4);
+  }
+  if (isCrossword) {
+    el.propCwDirection.value = hs.direction || 'horizontal';
+    el.propCwColor.value = hs.textColor || '#dc2626';
+    el.cwBoxSizeLabel.textContent = `크기: 가로 ${Math.round(hs.boxWidth || 24)}% × 세로 ${Math.round(hs.boxHeight || 6)}% (모서리 ↘ 드래그로 퍼즐 칸에 맞추세요)`;
   }
 
   const hasImage = Boolean(hs.answerImage);
@@ -452,16 +485,220 @@ function buildJumpAreaBox(hs, isEditorPreview) {
   return box;
 }
 
-function renderOverlay(overlayEl, pageNum) {
+function buildCrosswordBox(hs, isEditorPreview) {
+  const dir = hs.direction === 'vertical' ? 'vertical' : 'horizontal';
+  const grid = document.createElement('div');
+  grid.className = `cw-grid cw-grid--${dir} ${isEditorPreview ? 'is-editor-preview' : 'is-revealed'}`;
+  grid.title = isEditorPreview
+    ? '드래그로 이동, 모서리 ↘ 핸들로 가로·세로 크기를 퍼즐 칸에 맞추세요'
+    : '누르면 ? 버튼으로 돌아갑니다';
+
+  const chars = Array.from((hs.answer || '').trim());
+  const displayChars = chars.length > 0 ? chars : (isEditorPreview ? ['?', '?', '?'] : ['(미입력)']);
+  const textColor = hs.textColor || '#dc2626';
+
+  for (const ch of displayChars) {
+    const cell = document.createElement('div');
+    cell.className = 'cw-cell';
+    cell.style.color = textColor;
+    cell.textContent = ch;
+    grid.appendChild(cell);
+  }
+
+  if (isEditorPreview) {
+    const badge = document.createElement('span');
+    badge.className = 'answer-box-anchor-badge';
+    badge.textContent = '?';
+    grid.appendChild(badge);
+
+    const handle = document.createElement('div');
+    handle.className = 'resize-handle';
+    handle.title = '드래그하여 낱말 칸 크기 조절';
+    handle.textContent = '↘';
+    grid.appendChild(handle);
+  }
+
+  return grid;
+}
+
+function createSvgEl(tag, attrs) {
+  const node = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    node.setAttribute(k, String(v));
+  }
+  return node;
+}
+
+function renderLineLayer(svgEl, overlayEl, pageNum) {
+  if (!svgEl) return;
+  svgEl.innerHTML = '';
+  if (!pageNum) return;
+
+  const lineList = state.hotspots.filter((h) => h.page === pageNum && h.type === 'line_answer');
+  for (const hs of lineList) {
+    const isEditor = state.mode === 'editor';
+    const isRevealed = state.mode === 'viewer' && state.revealedAnswers.has(hs.id);
+    if (!isEditor && !isRevealed) continue;
+
+    const endX = typeof hs.endX === 'number' ? hs.endX : Math.min(92, hs.x + 22);
+    const endY = typeof hs.endY === 'number' ? hs.endY : hs.y;
+    const color = hs.lineColor || '#ef4444';
+    const width = Number(hs.lineWidth || 4);
+
+    const lineEl = createSvgEl('line', {
+      x1: hs.x,
+      y1: hs.y,
+      x2: endX,
+      y2: endY,
+      stroke: color,
+      'stroke-width': width,
+      'stroke-linecap': 'round',
+      'vector-effect': 'non-scaling-stroke',
+      'data-line-id': hs.id
+    });
+    if (isEditor) {
+      lineEl.setAttribute('stroke-dasharray', '6 4');
+    }
+    svgEl.appendChild(lineEl);
+
+    // Perfect circular endpoint caps using zero-length round-capped strokes
+    const startDot = createSvgEl('line', {
+      x1: hs.x,
+      y1: hs.y,
+      x2: hs.x,
+      y2: hs.y,
+      stroke: color,
+      'stroke-width': width * 2.4,
+      'stroke-linecap': 'round',
+      'vector-effect': 'non-scaling-stroke',
+      'data-dot-start': hs.id
+    });
+    const endDot = createSvgEl('line', {
+      x1: endX,
+      y1: endY,
+      x2: endX,
+      y2: endY,
+      stroke: color,
+      'stroke-width': width * 2.4,
+      'stroke-linecap': 'round',
+      'vector-effect': 'non-scaling-stroke',
+      'data-dot-end': hs.id
+    });
+    svgEl.appendChild(startDot);
+    svgEl.appendChild(endDot);
+
+    if (!isEditor && isRevealed) {
+      const hitLine = createSvgEl('line', {
+        x1: hs.x,
+        y1: hs.y,
+        x2: endX,
+        y2: endY,
+        stroke: 'transparent',
+        'stroke-width': Math.max(20, width * 4),
+        'stroke-linecap': 'round',
+        'vector-effect': 'non-scaling-stroke',
+        class: 'line-hit-area'
+      });
+      hitLine.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (state.suppressNextStageClick) return;
+        state.revealedAnswers.delete(hs.id);
+        renderHotspots();
+      });
+      svgEl.appendChild(hitLine);
+    }
+
+    if (isEditor) {
+      const endHandle = document.createElement('div');
+      endHandle.className = 'line-end-handle';
+      if (hs.id === state.selectedId) endHandle.classList.add('is-selected');
+      endHandle.dataset.id = hs.id;
+      endHandle.style.left = `${endX}%`;
+      endHandle.style.top = `${endY}%`;
+      endHandle.style.background = color;
+      endHandle.title = '드래그하여 선 끝점 위치 조절';
+
+      endHandle.addEventListener('pointerdown', (e) => {
+        if (e.button !== 0) return;
+        closeHotspotContextMenu();
+        e.stopPropagation();
+        e.preventDefault();
+        selectHotspot(hs.id);
+        const startClientX = e.clientX;
+        const startClientY = e.clientY;
+        const origEndX = endX;
+        const origEndY = endY;
+        let moved = false;
+
+        const onMove = (ev) => {
+          const rect = overlayEl.getBoundingClientRect();
+          if (!rect.width || !rect.height) return;
+          const dxPct = ((ev.clientX - startClientX) / rect.width) * 100;
+          const dyPct = ((ev.clientY - startClientY) / rect.height) * 100;
+          if (Math.abs(ev.clientX - startClientX) > 2 || Math.abs(ev.clientY - startClientY) > 2) {
+            moved = true;
+          }
+          const nx = Number(Math.min(97, Math.max(3, origEndX + dxPct)).toFixed(1));
+          const ny = Number(Math.min(97, Math.max(3, origEndY + dyPct)).toFixed(1));
+          hs.endX = nx;
+          hs.endY = ny;
+          endHandle.style.left = `${nx}%`;
+          endHandle.style.top = `${ny}%`;
+          lineEl.setAttribute('x2', String(nx));
+          lineEl.setAttribute('y2', String(ny));
+          endDot.setAttribute('x1', String(nx));
+          endDot.setAttribute('y1', String(ny));
+          endDot.setAttribute('x2', String(nx));
+          endDot.setAttribute('y2', String(ny));
+        };
+
+        const onUp = () => {
+          window.removeEventListener('pointermove', onMove);
+          window.removeEventListener('pointerup', onUp);
+          window.removeEventListener('pointercancel', onUp);
+          if (moved) persistState();
+        };
+
+        window.addEventListener('pointermove', onMove);
+        window.addEventListener('pointerup', onUp);
+        window.addEventListener('pointercancel', onUp);
+      });
+
+      endHandle.addEventListener('click', (e) => {
+        e.stopPropagation();
+        selectHotspot(hs.id);
+      });
+
+      endHandle.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        selectHotspot(hs.id);
+        openHotspotContextMenu(e.clientX, e.clientY, hs.id, null);
+      });
+
+      overlayEl.appendChild(endHandle);
+    }
+  }
+}
+
+function renderOverlay(overlayEl, pageNum, svgEl) {
   overlayEl.innerHTML = '';
+  if (svgEl) svgEl.innerHTML = '';
   if (!pageNum) {
     delete overlayEl.dataset.page;
     return;
   }
   overlayEl.dataset.page = String(pageNum);
 
+  renderLineLayer(svgEl, overlayEl, pageNum);
+
   const list = state.hotspots.filter((h) => h.page === pageNum);
   for (const hs of list) {
+    if (state.mode === 'viewer' && hs.type === 'line_answer' && state.revealedAnswers.has(hs.id)) {
+      // Revealed line is rendered on SVG layer; hide '?' button
+      continue;
+    }
+
     const node = document.createElement('div');
     node.className = 'hotspot-node';
     if (state.mode === 'editor' && hs.id === state.selectedId) {
@@ -473,7 +710,7 @@ function renderOverlay(overlayEl, pageNum) {
     node.dataset.id = hs.id;
 
     const answerKind = getEffectiveAnswerKind(hs);
-    const isRevealed = state.mode === 'viewer' && hs.type === 'answer' && state.revealedAnswers.has(hs.id);
+    const isRevealed = state.mode === 'viewer' && (hs.type === 'answer' || hs.type === 'crossword_answer') && state.revealedAnswers.has(hs.id);
 
     if (hs.type === 'jump_area') {
       node.classList.add('is-jump-area');
@@ -481,15 +718,31 @@ function renderOverlay(overlayEl, pageNum) {
       node.style.height = `${hs.boxHeight || 6}%`;
       const box = buildJumpAreaBox(hs, state.mode === 'editor');
       node.appendChild(box);
-      attachHotspotEvents(node, box, hs, overlayEl);
+      attachHotspotEvents(node, box, hs, overlayEl, svgEl);
+    } else if (hs.type === 'crossword_answer' && (state.mode === 'editor' || isRevealed)) {
+      node.classList.add('is-crossword');
+      node.style.width = `${hs.boxWidth || 24}%`;
+      node.style.height = `${hs.boxHeight || 6}%`;
+      const grid = buildCrosswordBox(hs, state.mode === 'editor');
+      if (state.mode === 'viewer') {
+        grid.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (state.suppressNextStageClick) return;
+          state.revealedAnswers.delete(hs.id);
+          renderHotspots();
+        });
+      } else {
+        attachHotspotEvents(node, grid, hs, overlayEl, svgEl);
+      }
+      node.appendChild(grid);
     } else if (state.mode === 'editor' && hs.type === 'answer' && answerKind === 'image') {
       // Editor mode for image-type answer: show WYSIWYG resizable box
       node.classList.add('is-answer-box');
       node.style.width = `${hs.answerWidth || 30}%`;
       const box = buildAnswerImageBox(hs, true);
       node.appendChild(box);
-      attachHotspotEvents(node, box, hs, overlayEl);
-    } else if (isRevealed && hs.answerStyle !== 'modal') {
+      attachHotspotEvents(node, box, hs, overlayEl, svgEl);
+    } else if (isRevealed && hs.type === 'answer' && hs.answerStyle !== 'modal') {
       // Viewer mode revealed: hide '?' and show answer (image or text pill)
       if (answerKind === 'image' && hs.answerImage) {
         node.classList.add('is-answer-box');
@@ -518,12 +771,15 @@ function renderOverlay(overlayEl, pageNum) {
         node.appendChild(pill);
       }
     } else {
-      // Standard icon button (?, video, article, toc)
+      // Standard icon button (?, video, article, toc, line_answer, crossword_answer)
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = `hotspot-btn hotspot-btn--${hs.type}`;
       btn.title = hs.type === 'toc' ? `${hs.targetPage || 1}쪽으로 이동` : (hs.title || '');
       btn.innerHTML = hs.type === 'toc' ? escapeHtml(hs.title || '차례') : getIconSvg(hs.type);
+      if (hs.type === 'line_answer' && hs.lineColor) {
+        btn.style.background = hs.lineColor;
+      }
       node.appendChild(btn);
 
       if (state.mode === 'editor') {
@@ -533,13 +789,15 @@ function renderOverlay(overlayEl, pageNum) {
           tag.textContent = (hs.answer && hs.answer.trim()) || hs.title || '정답';
         } else if (hs.type === 'toc') {
           tag.textContent = `→ ${hs.targetPage || 1}쪽`;
+        } else if (hs.type === 'line_answer') {
+          tag.textContent = hs.title || '선 잇기';
         } else {
           tag.textContent = hs.title || hs.type;
         }
         node.appendChild(tag);
       }
 
-      attachHotspotEvents(node, btn, hs, overlayEl);
+      attachHotspotEvents(node, btn, hs, overlayEl, svgEl);
     }
 
     overlayEl.appendChild(node);
@@ -586,13 +844,23 @@ function copyHotspotById(id) {
 }
 
 function cloneHotspotAt(source, targetPage, targetX, targetY) {
+  const clampedX = Number(Math.min(96, Math.max(4, targetX)).toFixed(1));
+  const clampedY = Number(Math.min(96, Math.max(4, targetY)).toFixed(1));
   const copy = {
     ...source,
     id: `hs-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
     page: targetPage,
-    x: Number(Math.min(96, Math.max(4, targetX)).toFixed(1)),
-    y: Number(Math.min(96, Math.max(4, targetY)).toFixed(1))
+    x: clampedX,
+    y: clampedY
   };
+  if (source.type === 'line_answer') {
+    const dx = clampedX - source.x;
+    const dy = clampedY - source.y;
+    const srcEndX = typeof source.endX === 'number' ? source.endX : Math.min(92, source.x + 22);
+    const srcEndY = typeof source.endY === 'number' ? source.endY : source.y;
+    copy.endX = Number(Math.min(96, Math.max(4, srcEndX + dx)).toFixed(1));
+    copy.endY = Number(Math.min(96, Math.max(4, srcEndY + dy)).toFixed(1));
+  }
   state.hotspots.push(copy);
   persistState();
   renderHotspots();
@@ -644,7 +912,7 @@ function deleteHotspotById(id) {
   showToast('버튼을 삭제했습니다.');
 }
 
-function attachHotspotEvents(node, triggerEl, hs, overlayEl) {
+function attachHotspotEvents(node, triggerEl, hs, overlayEl, svgEl) {
   let dragging = false;
   let resizing = false;
   let moved = false;
@@ -652,7 +920,10 @@ function attachHotspotEvents(node, triggerEl, hs, overlayEl) {
   let startClientY = 0;
   let startX = hs.x;
   let startY = hs.y;
-  let startWidthPct = hs.type === 'jump_area' ? (hs.boxWidth || 38) : (hs.answerWidth || 30);
+  const isBoxResize = hs.type === 'jump_area' || hs.type === 'crossword_answer';
+  let startWidthPct = isBoxResize
+    ? (hs.boxWidth || (hs.type === 'crossword_answer' ? 24 : 38))
+    : (hs.answerWidth || 30);
   let startHeightPct = hs.boxHeight || 6;
 
   const resizeHandle = node.querySelector('.resize-handle');
@@ -666,7 +937,9 @@ function attachHotspotEvents(node, triggerEl, hs, overlayEl) {
       moved = false;
       startClientX = e.clientX;
       startClientY = e.clientY;
-      startWidthPct = hs.type === 'jump_area' ? (hs.boxWidth || 38) : (hs.answerWidth || 30);
+      startWidthPct = isBoxResize
+        ? (hs.boxWidth || (hs.type === 'crossword_answer' ? 24 : 38))
+        : (hs.answerWidth || 30);
       startHeightPct = hs.boxHeight || 6;
 
       const onMove = (ev) => {
@@ -674,9 +947,9 @@ function attachHotspotEvents(node, triggerEl, hs, overlayEl) {
         const overlayRect = overlayEl.getBoundingClientRect();
         if (!overlayRect.width || !overlayRect.height) return;
         const deltaXPct = ((ev.clientX - startClientX) / overlayRect.width) * 100 * 2;
-        if (hs.type === 'jump_area') {
+        if (isBoxResize) {
           const deltaYPct = ((ev.clientY - startClientY) / overlayRect.height) * 100 * 2;
-          const nextW = Math.min(95, Math.max(5, startWidthPct + deltaXPct));
+          const nextW = Math.min(95, Math.max(4, startWidthPct + deltaXPct));
           const nextH = Math.min(95, Math.max(2.5, startHeightPct + deltaYPct));
           hs.boxWidth = Number(nextW.toFixed(1));
           hs.boxHeight = Number(nextH.toFixed(1));
@@ -684,7 +957,12 @@ function attachHotspotEvents(node, triggerEl, hs, overlayEl) {
           node.style.height = `${hs.boxHeight}%`;
           moved = true;
           if (state.selectedId === hs.id) {
-            el.jumpBoxSizeLabel.textContent = `영역 크기: 가로 ${Math.round(hs.boxWidth)}% × 세로 ${Math.round(hs.boxHeight)}% (모서리 ↘ 드래그로 조절)`;
+            const msg = `크기: 가로 ${Math.round(hs.boxWidth)}% × 세로 ${Math.round(hs.boxHeight)}% (모서리 ↘ 드래그로 조절)`;
+            if (hs.type === 'crossword_answer') {
+              el.cwBoxSizeLabel.textContent = msg;
+            } else {
+              el.jumpBoxSizeLabel.textContent = msg;
+            }
           }
         } else {
           const nextWidth = Math.min(90, Math.max(10, startWidthPct + deltaXPct));
@@ -726,6 +1004,9 @@ function attachHotspotEvents(node, triggerEl, hs, overlayEl) {
     startX = hs.x;
     startY = hs.y;
 
+    const svgLine = svgEl ? svgEl.querySelector(`line[data-line-id="${hs.id}"]`) : null;
+    const svgStartDot = svgEl ? svgEl.querySelector(`line[data-dot-start="${hs.id}"]`) : null;
+
     const onMove = (ev) => {
       if (!dragging || state.mode !== 'editor') return;
       const rect = overlayEl.getBoundingClientRect();
@@ -741,6 +1022,16 @@ function attachHotspotEvents(node, triggerEl, hs, overlayEl) {
       hs.y = Number(ny.toFixed(1));
       node.style.left = `${hs.x}%`;
       node.style.top = `${hs.y}%`;
+      if (svgLine) {
+        svgLine.setAttribute('x1', String(hs.x));
+        svgLine.setAttribute('y1', String(hs.y));
+      }
+      if (svgStartDot) {
+        svgStartDot.setAttribute('x1', String(hs.x));
+        svgStartDot.setAttribute('y1', String(hs.y));
+        svgStartDot.setAttribute('x2', String(hs.x));
+        svgStartDot.setAttribute('y2', String(hs.y));
+      }
       if (state.selectedId === hs.id) {
         el.propCoords.textContent = `위치: 원본 ${hs.page}쪽 · X ${hs.x.toFixed(1)}%, Y ${hs.y.toFixed(1)}%`;
       }
@@ -809,8 +1100,8 @@ function toYouTubeEmbedUrl(url) {
 }
 
 function activateHotspot(hs) {
-  if (hs.type === 'answer') {
-    if (hs.answerStyle === 'modal') {
+  if (hs.type === 'answer' || hs.type === 'line_answer' || hs.type === 'crossword_answer') {
+    if (hs.type === 'answer' && hs.answerStyle === 'modal') {
       openAnswerModal(hs);
       return;
     }
@@ -965,8 +1256,8 @@ function escapeHtml(str) {
 
 function renderHotspots() {
   const { leftPage, rightPage } = getVisiblePages();
-  renderOverlay(el.leftOverlay, leftPage);
-  renderOverlay(el.rightOverlay, rightPage);
+  renderOverlay(el.leftOverlay, leftPage, el.leftLineSvg);
+  renderOverlay(el.rightOverlay, rightPage, el.rightLineSvg);
   renderThumbnails();
 }
 
@@ -1295,6 +1586,8 @@ function handleOverlayClick(e, overlayEl) {
   const answerKind = tool === 'answer_image' ? 'image' : 'text';
   const isToc = tool === 'toc';
   const isJumpArea = tool === 'jump_area';
+  const isLine = tool === 'line_answer';
+  const isCrossword = tool === 'crossword_answer';
 
   const newHotspot = {
     id: `hs-${Date.now()}`,
@@ -1314,13 +1607,23 @@ function handleOverlayClick(e, overlayEl) {
               ? '차례'
               : isJumpArea
                 ? '주제 이동'
-                : '정답 확인',
+                : isLine
+                  ? '선 잇기'
+                  : isCrossword
+                    ? '낱말 칸'
+                    : '정답 확인',
     targetPage: isToc ? 2 : isJumpArea ? 6 : undefined,
-    boxWidth: isJumpArea ? 38 : undefined,
-    boxHeight: isJumpArea ? 6 : undefined,
-    url: isAnswer || isToc || isJumpArea ? '' : 'https://',
+    boxWidth: isJumpArea ? 38 : isCrossword ? 24 : undefined,
+    boxHeight: isJumpArea || isCrossword ? 6 : undefined,
+    endX: isLine ? Number(Math.min(92, x + 22).toFixed(1)) : undefined,
+    endY: isLine ? y : undefined,
+    lineColor: isLine ? '#ef4444' : undefined,
+    lineWidth: isLine ? 4 : undefined,
+    direction: isCrossword ? 'horizontal' : undefined,
+    textColor: isCrossword ? '#dc2626' : undefined,
+    url: isAnswer || isToc || isJumpArea || isLine || isCrossword ? '' : 'https://',
     note: '',
-    answer: tool === 'answer_text' ? '정답' : '',
+    answer: tool === 'answer_text' ? '정답' : isCrossword ? '당진시' : '',
     answerImage: '',
     answerWidth: 30,
     answerStyle: 'inline',
@@ -1339,7 +1642,11 @@ function handleOverlayClick(e, overlayEl) {
         ? '투명 버튼이 배치되었습니다. 모서리 ↘ 드래그로 크기를 맞추고 이동 페이지를 입력하세요.'
         : isToc
           ? '차례 버튼이 배치되었습니다. 오른쪽에서 이동할 페이지를 설정하세요.'
-          : '버튼이 배치되었습니다. 오른쪽 패널에서 내용을 편집하세요.'
+          : isLine
+            ? '선 잇기가 배치되었습니다. ? 버튼과 동그라미(●) 끝점을 각각 점에 맞추세요.'
+            : isCrossword
+              ? '낱말 칸이 배치되었습니다. 정답 낱말을 입력하고 모서리 ↘로 칸에 맞추세요.'
+              : '버튼이 배치되었습니다. 오른쪽 패널에서 내용을 편집하세요.'
   );
 }
 
@@ -1653,6 +1960,21 @@ function bindInspectorEvents() {
         if (!hs.boxHeight) hs.boxHeight = 6;
         if (!hs.targetPage) hs.targetPage = 6;
         delete hs.answerKind;
+      } else if (val === 'line_answer') {
+        hs.type = 'line_answer';
+        if (typeof hs.endX !== 'number') hs.endX = Number(Math.min(92, hs.x + 22).toFixed(1));
+        if (typeof hs.endY !== 'number') hs.endY = hs.y;
+        if (!hs.lineColor) hs.lineColor = '#ef4444';
+        if (!hs.lineWidth) hs.lineWidth = 4;
+        delete hs.answerKind;
+      } else if (val === 'crossword_answer') {
+        hs.type = 'crossword_answer';
+        if (!hs.direction) hs.direction = 'horizontal';
+        if (!hs.boxWidth) hs.boxWidth = 24;
+        if (!hs.boxHeight) hs.boxHeight = 6;
+        if (!hs.textColor) hs.textColor = '#dc2626';
+        if (!hs.answer || hs.answer === '정답') hs.answer = '당진시';
+        delete hs.answerKind;
       } else {
         hs.type = val;
         delete hs.answerKind;
@@ -1672,6 +1994,30 @@ function bindInspectorEvents() {
   el.propAnswer.addEventListener('input', () => updateSelected((hs) => { hs.answer = el.propAnswer.value; }));
   el.propAnswerStyle.addEventListener('change', () => updateSelected((hs) => { hs.answerStyle = el.propAnswerStyle.value; }));
   el.propSize.addEventListener('input', () => updateSelected((hs) => { hs.scale = Number(el.propSize.value); }));
+
+  el.propLineColor.addEventListener('input', () => updateSelected((hs) => { hs.lineColor = el.propLineColor.value; }));
+  el.propLineWidth.addEventListener('input', () => updateSelected((hs) => { hs.lineWidth = Number(el.propLineWidth.value); }));
+  document.querySelectorAll('[data-line-color]').forEach((btn) => {
+    btn.addEventListener('click', () => updateSelected((hs) => { hs.lineColor = btn.dataset.lineColor; }));
+  });
+
+  el.propCwDirection.addEventListener('change', () => {
+    const nextDir = el.propCwDirection.value;
+    updateSelected((hs) => {
+      if (hs.direction !== nextDir) {
+        const prevW = hs.boxWidth || 24;
+        const prevH = hs.boxHeight || 6;
+        const ratio = state.pageAspectRatio || 0.72;
+        hs.boxWidth = Number(Math.max(4, Math.min(90, prevH / ratio)).toFixed(1));
+        hs.boxHeight = Number(Math.max(3, Math.min(90, prevW * ratio)).toFixed(1));
+        hs.direction = nextDir;
+      }
+    });
+  });
+  el.propCwColor.addEventListener('input', () => updateSelected((hs) => { hs.textColor = el.propCwColor.value; }));
+  document.querySelectorAll('[data-cw-color]').forEach((btn) => {
+    btn.addEventListener('click', () => updateSelected((hs) => { hs.textColor = btn.dataset.cwColor; }));
+  });
 
   el.propAnswerImageInput.addEventListener('change', async (e) => {
     const file = e.target.files[0];
@@ -1700,8 +2046,12 @@ function bindInspectorEvents() {
   el.testHotspotBtn.addEventListener('click', () => {
     const hs = state.hotspots.find((item) => item.id === state.selectedId);
     if (!hs) return;
-    if (hs.type === 'answer') {
+    if (hs.type === 'answer' || hs.type === 'crossword_answer') {
       openAnswerModal(hs);
+      return;
+    }
+    if (hs.type === 'line_answer') {
+      showToast('관찰자 모드에서 ?를 누르면 시작점과 끝점 사이에 선이 그려집니다.');
       return;
     }
     activateHotspot(hs);
@@ -1896,8 +2246,9 @@ function bindEvents() {
 
   el.revealAllAnswersBtn.addEventListener('click', () => {
     const { leftPage, rightPage } = getVisiblePages();
+    const isAnswerType = (t) => t === 'answer' || t === 'line_answer' || t === 'crossword_answer';
     const visibleAnswerIds = state.hotspots
-      .filter((h) => h.type === 'answer' && (h.page === leftPage || h.page === rightPage))
+      .filter((h) => isAnswerType(h.type) && (h.page === leftPage || h.page === rightPage))
       .map((h) => h.id);
 
     const allRevealed = visibleAnswerIds.length > 0 && visibleAnswerIds.every((id) => state.revealedAnswers.has(id));

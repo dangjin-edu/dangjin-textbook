@@ -337,6 +337,17 @@ body {
   font-size: 11px;
 }
 
+.hotspot-preview--line {
+  background: #e11d48;
+  font-size: 12px;
+}
+
+.hotspot-preview--cw {
+  background: #0d9488;
+  border-radius: 5px;
+  font-size: 11px;
+}
+
 .editor-toolbar__pdf {
   display: flex;
   align-items: center;
@@ -638,7 +649,11 @@ body {
 .hotspot-overlay {
   position: absolute;
   inset: 0;
-  z-index: 6;
+  z-index: 7;
+}
+
+.app-shell:not(.is-editor) .hotspot-overlay {
+  pointer-events: none;
 }
 
 .app-shell.is-placing .hotspot-overlay {
@@ -655,6 +670,7 @@ body {
   z-index: 2;
   user-select: none;
   touch-action: none;
+  pointer-events: auto;
 }
 
 .hotspot-node.is-answer-box {
@@ -755,6 +771,164 @@ body {
   max-width: 92%;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Line Matching SVG Layer */
+.line-svg-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 6;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.line-hit-area {
+  pointer-events: stroke;
+  cursor: pointer;
+}
+
+.hotspot-btn--line_answer {
+  background: radial-gradient(circle at 30% 30%, #f43f5e, #be123c);
+  font-weight: 800;
+  font-size: 14px;
+}
+
+.hotspot-btn--crossword_answer {
+  background: radial-gradient(circle at 30% 30%, #14b8a6, #0f766e);
+  font-weight: 800;
+  font-size: 14px;
+}
+
+.line-end-handle {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  border: 2.5px solid #ffffff;
+  background: #ef4444;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.35);
+  cursor: grab;
+  z-index: 8;
+  touch-action: none;
+}
+
+.line-end-handle:active {
+  cursor: grabbing;
+}
+
+.line-end-handle.is-selected {
+  outline: 3px solid #2563eb;
+  outline-offset: 2px;
+}
+
+/* Crossword Word Cells */
+.hotspot-node.is-crossword {
+  transform: translate(-50%, -50%);
+}
+
+.cw-grid {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  cursor: pointer;
+}
+
+.cw-grid--horizontal {
+  flex-direction: row;
+}
+
+.cw-grid--vertical {
+  flex-direction: column;
+}
+
+.cw-cell {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-size: 62cqmin;
+  font-weight: 800;
+  line-height: 1;
+  container-type: size;
+  user-select: none;
+}
+
+.cw-grid.is-editor-preview {
+  background: rgba(20, 184, 166, 0.14);
+  border: 2px dashed #0f766e;
+  border-radius: 5px;
+  cursor: grab;
+}
+
+.cw-grid.is-editor-preview .cw-cell {
+  border-right: 1px dashed rgba(15, 118, 110, 0.45);
+}
+
+.cw-grid--vertical.is-editor-preview .cw-cell {
+  border-right: 0;
+  border-bottom: 1px dashed rgba(15, 118, 110, 0.45);
+}
+
+.cw-grid.is-editor-preview .cw-cell:last-child {
+  border-right: 0;
+  border-bottom: 0;
+}
+
+.hotspot-node.is-selected .cw-grid.is-editor-preview {
+  border-style: solid;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.22);
+}
+
+.cw-grid.is-revealed {
+  animation: popIn 0.15s ease-out;
+}
+
+.cw-grid.is-revealed .cw-cell {
+  background: rgba(255, 255, 255, 0.72);
+  border-radius: 3px;
+}
+
+/* Inspector Swatches & Subgroups */
+.sub-settings-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+  background: #f8fafc;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+}
+
+.color-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.color-row input[type="color"] {
+  width: 34px;
+  height: 28px;
+  padding: 1px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.swatch-btn {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.28);
+  cursor: pointer;
+  padding: 0;
 }
 
 .app-shell.is-editor .hotspot-node {

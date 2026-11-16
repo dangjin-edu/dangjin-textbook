@@ -98,6 +98,14 @@
           <span class="hotspot-preview hotspot-preview--jump">□</span>
           투명 버튼
         </button>
+        <button class="tool-pill" data-tool="line_answer" type="button">
+          <span class="hotspot-preview hotspot-preview--line">╱</span>
+          선 잇기 정답
+        </button>
+        <button class="tool-pill" data-tool="crossword_answer" type="button">
+          <span class="hotspot-preview hotspot-preview--cw">가</span>
+          낱말 칸
+        </button>
       </div>
 
       <div class="editor-toolbar__pdf">
@@ -153,6 +161,7 @@
                 <div class="page-surface" id="leftPageSurface">
                   <canvas id="leftCanvas" class="page-canvas"></canvas>
                   <div id="leftSamplePage" class="sample-page-layer"></div>
+                  <svg id="leftLineSvg" class="line-svg-layer" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>
                   <div id="leftOverlay" class="hotspot-overlay" data-side="left"></div>
                 </div>
                 <button id="deleteLeftPageBtn" class="page-delete-btn" type="button" title="이 페이지 삭제">페이지 삭제</button>
@@ -167,6 +176,7 @@
                 <div class="page-surface" id="rightPageSurface">
                   <canvas id="rightCanvas" class="page-canvas"></canvas>
                   <div id="rightSamplePage" class="sample-page-layer"></div>
+                  <svg id="rightLineSvg" class="line-svg-layer" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>
                   <div id="rightOverlay" class="hotspot-overlay" data-side="right"></div>
                 </div>
                 <button id="deleteRightPageBtn" class="page-delete-btn" type="button" title="이 페이지 삭제">페이지 삭제</button>
@@ -203,6 +213,8 @@
               <option value="answer_image">정답 보여주기 (이미지)</option>
               <option value="toc">차례 버튼 (페이지 이동)</option>
               <option value="jump_area">투명 버튼 (차례 영역 이동)</option>
+              <option value="line_answer">선 잇기 정답 (점 ↔ 점 연결)</option>
+              <option value="crossword_answer">가로/세로 낱말 칸 정답</option>
             </select>
           </div>
 
@@ -266,6 +278,51 @@
               <option value="inline">제자리에서 ?가 정답으로 전환</option>
               <option value="modal">해설 포함 팝업 창으로 표시</option>
             </select>
+          </div>
+
+          <!-- Line Matching Answer Settings -->
+          <div id="lineSettingsGroup" class="sub-settings-group" hidden>
+            <div class="form-field">
+              <label for="propLineColor">선 색상</label>
+              <div class="color-row">
+                <input id="propLineColor" type="color" value="#ef4444" />
+                <button class="swatch-btn" type="button" data-line-color="#ef4444" style="background:#ef4444;" title="빨강"></button>
+                <button class="swatch-btn" type="button" data-line-color="#2563eb" style="background:#2563eb;" title="파랑"></button>
+                <button class="swatch-btn" type="button" data-line-color="#16a34a" style="background:#16a34a;" title="초록"></button>
+                <button class="swatch-btn" type="button" data-line-color="#9333ea" style="background:#9333ea;" title="보라"></button>
+              </div>
+            </div>
+            <div class="form-field">
+              <label for="propLineWidth">선 굵기 (<span id="propLineWidthVal">4</span>px)</label>
+              <input id="propLineWidth" type="range" min="2" max="9" step="1" value="4" />
+            </div>
+            <div class="answer-size-hint" id="lineCoordsHint">
+              ? 버튼과 동그라미(●) 끝점을 각각 드래그해 점에 맞추세요.
+            </div>
+          </div>
+
+          <!-- Crossword Word Cells Settings -->
+          <div id="crosswordSettingsGroup" class="sub-settings-group" hidden>
+            <div class="form-field">
+              <label for="propCwDirection">배치 방향</label>
+              <select id="propCwDirection">
+                <option value="horizontal">가로 방향 (→)</option>
+                <option value="vertical">세로 방향 (↓)</option>
+              </select>
+            </div>
+            <div class="form-field">
+              <label for="propCwColor">글자 색상</label>
+              <div class="color-row">
+                <input id="propCwColor" type="color" value="#dc2626" />
+                <button class="swatch-btn" type="button" data-cw-color="#dc2626" style="background:#dc2626;" title="빨강"></button>
+                <button class="swatch-btn" type="button" data-cw-color="#2563eb" style="background:#2563eb;" title="파랑"></button>
+                <button class="swatch-btn" type="button" data-cw-color="#16a34a" style="background:#16a34a;" title="초록"></button>
+                <button class="swatch-btn" type="button" data-cw-color="#1e293b" style="background:#1e293b;" title="검정"></button>
+              </div>
+            </div>
+            <div class="answer-size-hint" id="cwBoxSizeLabel">
+              크기: 가로 24% × 세로 6% (모서리 ↘ 드래그로 퍼즐 칸에 맞추세요)
+            </div>
           </div>
 
           <div class="form-field" id="sizeFieldGroup">
