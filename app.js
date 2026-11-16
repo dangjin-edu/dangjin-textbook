@@ -1327,7 +1327,7 @@ async function renderSlot(side, pdfPageNum, displayNum) {
 
   const slotWidth = slot.clientWidth || 460;
   const dpr = Math.max(window.devicePixelRatio || 1, 2.5);
-  const desiredPixelWidth = Math.min(2400, Math.max(1500, Math.round(slotWidth * dpr * Math.max(state.zoom, 1))));
+  const desiredPixelWidth = Math.min(2200, Math.max(1800, Math.round(slotWidth * dpr * 1.6)));
   const scale = desiredPixelWidth / unscaledViewport.width;
   const viewport = page.getViewport({ scale });
 
@@ -1588,7 +1588,6 @@ function applyZoomAndPan() {
   el.bookStage.classList.toggle('is-zoomed', state.zoom > 1);
 }
 
-let zoomRenderTimer = null;
 function setZoom(nextZoom) {
   state.zoom = Math.min(2.4, Math.max(0.6, Number(nextZoom.toFixed(2))));
   if (state.zoom <= 1) {
@@ -1597,13 +1596,6 @@ function setZoom(nextZoom) {
   }
   applyZoomAndPan();
   el.zoomLabel.textContent = `${Math.round(state.zoom * 100)}%`;
-
-  if (state.pdfDoc) {
-    clearTimeout(zoomRenderTimer);
-    zoomRenderTimer = setTimeout(() => {
-      renderSpread();
-    }, 180);
-  }
 }
 
 function setupStagePanning() {
@@ -1653,13 +1645,20 @@ function setupStagePanning() {
     window.addEventListener('pointercancel', onUp);
   });
 
-  // Mouse wheel zoom directly on the book stage (cursor-anchored)
+  // Mouse wheel zoom directly on the book stage (cursor-anchored, instant GPU scaling)
+  let wheelTransitionTimer = null;
   el.bookStage.addEventListener(
     'wheel',
     (e) => {
       if (!el.contentModal.hidden) return;
       if (!e.deltaY) return;
       e.preventDefault();
+
+      el.bookZoomWrap.classList.add('is-panning');
+      clearTimeout(wheelTransitionTimer);
+      wheelTransitionTimer = setTimeout(() => {
+        el.bookZoomWrap.classList.remove('is-panning');
+      }, 120);
 
       const oldZoom = state.zoom;
       const step = e.deltaY < 0 ? 0.1 : -0.1;
