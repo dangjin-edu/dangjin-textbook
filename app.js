@@ -1,6 +1,7 @@
 import { FirebaseTextbook } from './firebase-service.js';
 
 const STORAGE_KEY = 'digital_textbook_proto_v2';
+const DEFAULT_ZOOM = 1.3;
 
 if (window.pdfjsLib) {
   window.pdfjsLib.GlobalWorkerOptions.workerSrc =
@@ -14,7 +15,7 @@ const state = {
   bookId: BOOK_ID,
   mode: 'viewer', // 'viewer' | 'editor'
   layout: 'double', // 'double' | 'single'
-  zoom: 1,
+  zoom: DEFAULT_ZOOM,
   panX: 0,
   panY: 0,
   suppressNextStageClick: false,
@@ -81,6 +82,9 @@ const el = {
   nextPageBtn: document.getElementById('nextPageBtn'),
   lastPageBtn: document.getElementById('lastPageBtn'),
   pageIndicator: document.getElementById('pageIndicator'),
+  pageJumpForm: document.getElementById('pageJumpForm'),
+  pageJumpInput: document.getElementById('pageJumpInput'),
+  pageJumpTotal: document.getElementById('pageJumpTotal'),
   zoomOutBtn: document.getElementById('zoomOutBtn'),
   zoomInBtn: document.getElementById('zoomInBtn'),
   zoomResetBtn: document.getElementById('zoomResetBtn'),
@@ -95,6 +99,10 @@ const el = {
   closeInspectorBtn: document.getElementById('closeInspectorBtn'),
   propType: document.getElementById('propType'),
   propTitle: document.getElementById('propTitle'),
+  propTargetPage: document.getElementById('propTargetPage'),
+  targetPageGroup: document.getElementById('targetPageGroup'),
+  jumpSizeGroup: document.getElementById('jumpSizeGroup'),
+  jumpBoxSizeLabel: document.getElementById('jumpBoxSizeLabel'),
   propUrl: document.getElementById('propUrl'),
   propUrlLabel: document.getElementById('propUrlLabel'),
   propNote: document.getElementById('propNote'),
@@ -106,6 +114,7 @@ const el = {
   answerImagePreview: document.getElementById('answerImagePreview'),
   answerBoxSizeLabel: document.getElementById('answerBoxSizeLabel'),
   propAnswerStyle: document.getElementById('propAnswerStyle'),
+  sizeFieldGroup: document.getElementById('sizeFieldGroup'),
   propSize: document.getElementById('propSize'),
   propSizeVal: document.getElementById('propSizeVal'),
   propCoords: document.getElementById('propCoords'),
@@ -279,6 +288,10 @@ function selectTool(tool) {
     el.editorHint.textContent = '페이지에서 정답(텍스트) ? 버튼을 놓을 위치를 클릭하세요.';
   } else if (state.activeTool === 'answer_image') {
     el.editorHint.textContent = '페이지에서 정답(이미지) ? 버튼을 놓을 위치를 클릭하세요.';
+  } else if (state.activeTool === 'toc') {
+    el.editorHint.textContent = '페이지에서 차례 버튼을 놓을 위치를 클릭하세요.';
+  } else if (state.activeTool === 'jump_area') {
+    el.editorHint.textContent = '차례 등에서 이동용 투명 버튼을 놓을 위치를 클릭하세요.';
   } else {
     el.editorHint.textContent =
       '도구 선택 후 페이지를 클릭하세요. 기존 버튼은 클릭해 편집하거나 드래그로 이동합니다.';
@@ -313,6 +326,7 @@ function syncInspectorForm(hs) {
   const inspectorType = getInspectorTypeValue(hs);
   el.propType.value = inspectorType;
   el.propTitle.value = hs.title || '';
+  el.propTargetPage.value = hs.targetPage ? String(hs.targetPage) : '';
   el.propUrl.value = hs.url || '';
   el.propNote.value = hs.note || '';
   el.propAnswer.value = hs.answer || '';
@@ -324,15 +338,24 @@ function syncInspectorForm(hs) {
   const isAnswer = hs.type === 'answer';
   const isImageAnswer = inspectorType === 'answer_image';
   const isArticle = hs.type === 'article';
+  const isPageNav = hs.type === 'toc' || hs.type === 'jump_area';
+  const isJumpArea = hs.type === 'jump_area';
 
-  el.urlFieldGroup.hidden = isAnswer;
+  el.urlFieldGroup.hidden = isAnswer || isPageNav;
   el.noteFieldGroup.hidden = !isArticle;
   el.answerFieldGroup.hidden = !isAnswer;
   el.propAnswerLabel.textContent = isImageAnswer ? '정답 이미지 하단 설명 (선택)' : '정답 텍스트';
   el.propAnswer.placeholder = isImageAnswer ? '예: 아래 설명 참고 (비워둬도 됨)' : '예: 병원';
   el.answerImageGroup.hidden = !isImageAnswer;
   el.answerStyleGroup.hidden = !isAnswer;
+  el.targetPageGroup.hidden = !isPageNav;
+  el.jumpSizeGroup.hidden = !isJumpArea;
+  el.sizeFieldGroup.hidden = isJumpArea;
   el.propUrlLabel.textContent = hs.type === 'video' ? '유튜브 / 영상 URL' : '신문기사 / 웹페이지 URL';
+
+  if (isJumpArea) {
+    el.jumpBoxSizeLabel.textContent = `영역 크기: 가로 ${Math.round(hs.boxWidth || 38)}% × 세로 ${Math.round(hs.boxHeight || 6)}% (모서리 ↘ 드래그로 조절)`;
+  }
 
   const hasImage = Boolean(hs.answerImage);
   el.clearAnswerImageBtn.hidden = !hasImage;
@@ -349,6 +372,9 @@ function getIconSvg(type) {
   }
   if (type === 'article') {
     return '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><line x1="3" y1="12" x2="21" y2="12"/><path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18z"/></svg>';
+  }
+  if (type === 'toc') {
+    return '차례';
   }
   return '?';
 }
@@ -393,6 +419,29 @@ function buildAnswerImageBox(hs, isEditorPreview) {
   return box;
 }
 
+function buildJumpAreaBox(hs, isEditorPreview) {
+  const box = document.createElement('div');
+  box.className = isEditorPreview ? 'jump-area-box is-editor-preview' : 'jump-area-box';
+  const target = hs.targetPage || 1;
+  box.title = isEditorPreview
+    ? '드래그로 이동, 모서리 ↘ 핸들로 가로·세로 크기 조절'
+    : (hs.title ? `${hs.title} (${target}쪽으로 이동)` : `${target}쪽으로 이동`);
+
+  if (isEditorPreview) {
+    const label = document.createElement('span');
+    label.className = 'jump-area-label';
+    label.textContent = `${hs.title || '이동'} → ${target}쪽`;
+    box.appendChild(label);
+
+    const handle = document.createElement('div');
+    handle.className = 'resize-handle';
+    handle.title = '드래그하여 투명 버튼 크기 조절';
+    handle.textContent = '↘';
+    box.appendChild(handle);
+  }
+  return box;
+}
+
 function renderOverlay(overlayEl, pageNum) {
   overlayEl.innerHTML = '';
   if (!pageNum) {
@@ -416,7 +465,14 @@ function renderOverlay(overlayEl, pageNum) {
     const answerKind = getEffectiveAnswerKind(hs);
     const isRevealed = state.mode === 'viewer' && hs.type === 'answer' && state.revealedAnswers.has(hs.id);
 
-    if (state.mode === 'editor' && hs.type === 'answer' && answerKind === 'image') {
+    if (hs.type === 'jump_area') {
+      node.classList.add('is-jump-area');
+      node.style.width = `${hs.boxWidth || 38}%`;
+      node.style.height = `${hs.boxHeight || 6}%`;
+      const box = buildJumpAreaBox(hs, state.mode === 'editor');
+      node.appendChild(box);
+      attachHotspotEvents(node, box, hs, overlayEl);
+    } else if (state.mode === 'editor' && hs.type === 'answer' && answerKind === 'image') {
       // Editor mode for image-type answer: show WYSIWYG resizable box
       node.classList.add('is-answer-box');
       node.style.width = `${hs.answerWidth || 30}%`;
@@ -452,12 +508,12 @@ function renderOverlay(overlayEl, pageNum) {
         node.appendChild(pill);
       }
     } else {
-      // Standard icon button (?, video, article)
+      // Standard icon button (?, video, article, toc)
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = `hotspot-btn hotspot-btn--${hs.type}`;
-      btn.title = hs.title || '';
-      btn.innerHTML = getIconSvg(hs.type);
+      btn.title = hs.type === 'toc' ? `${hs.targetPage || 1}쪽으로 이동` : (hs.title || '');
+      btn.innerHTML = hs.type === 'toc' ? escapeHtml(hs.title || '차례') : getIconSvg(hs.type);
       node.appendChild(btn);
 
       if (state.mode === 'editor') {
@@ -465,6 +521,8 @@ function renderOverlay(overlayEl, pageNum) {
         tag.className = 'hotspot-editor-tag';
         if (hs.type === 'answer') {
           tag.textContent = (hs.answer && hs.answer.trim()) || hs.title || '정답';
+        } else if (hs.type === 'toc') {
+          tag.textContent = `→ ${hs.targetPage || 1}쪽`;
         } else {
           tag.textContent = hs.title || hs.type;
         }
@@ -486,7 +544,8 @@ function attachHotspotEvents(node, triggerEl, hs, overlayEl) {
   let startClientY = 0;
   let startX = hs.x;
   let startY = hs.y;
-  let startWidthPct = hs.answerWidth || 30;
+  let startWidthPct = hs.type === 'jump_area' ? (hs.boxWidth || 38) : (hs.answerWidth || 30);
+  let startHeightPct = hs.boxHeight || 6;
 
   const resizeHandle = node.querySelector('.resize-handle');
   if (resizeHandle) {
@@ -498,19 +557,35 @@ function attachHotspotEvents(node, triggerEl, hs, overlayEl) {
       resizing = true;
       moved = false;
       startClientX = e.clientX;
-      startWidthPct = hs.answerWidth || 30;
+      startClientY = e.clientY;
+      startWidthPct = hs.type === 'jump_area' ? (hs.boxWidth || 38) : (hs.answerWidth || 30);
+      startHeightPct = hs.boxHeight || 6;
 
       const onMove = (ev) => {
         if (!resizing) return;
         const overlayRect = overlayEl.getBoundingClientRect();
-        if (!overlayRect.width) return;
-        const deltaPct = ((ev.clientX - startClientX) / overlayRect.width) * 100 * 2;
-        const nextWidth = Math.min(90, Math.max(10, startWidthPct + deltaPct));
-        hs.answerWidth = Number(nextWidth.toFixed(1));
-        node.style.width = `${hs.answerWidth}%`;
-        moved = true;
-        if (state.selectedId === hs.id) {
-          el.answerBoxSizeLabel.textContent = `크기: 가로 ${Math.round(hs.answerWidth)}% (페이지 위 ↘ 드래그로 조절)`;
+        if (!overlayRect.width || !overlayRect.height) return;
+        const deltaXPct = ((ev.clientX - startClientX) / overlayRect.width) * 100 * 2;
+        if (hs.type === 'jump_area') {
+          const deltaYPct = ((ev.clientY - startClientY) / overlayRect.height) * 100 * 2;
+          const nextW = Math.min(95, Math.max(5, startWidthPct + deltaXPct));
+          const nextH = Math.min(95, Math.max(2.5, startHeightPct + deltaYPct));
+          hs.boxWidth = Number(nextW.toFixed(1));
+          hs.boxHeight = Number(nextH.toFixed(1));
+          node.style.width = `${hs.boxWidth}%`;
+          node.style.height = `${hs.boxHeight}%`;
+          moved = true;
+          if (state.selectedId === hs.id) {
+            el.jumpBoxSizeLabel.textContent = `영역 크기: 가로 ${Math.round(hs.boxWidth)}% × 세로 ${Math.round(hs.boxHeight)}% (모서리 ↘ 드래그로 조절)`;
+          }
+        } else {
+          const nextWidth = Math.min(90, Math.max(10, startWidthPct + deltaXPct));
+          hs.answerWidth = Number(nextWidth.toFixed(1));
+          node.style.width = `${hs.answerWidth}%`;
+          moved = true;
+          if (state.selectedId === hs.id) {
+            el.answerBoxSizeLabel.textContent = `크기: 가로 ${Math.round(hs.answerWidth)}% (페이지 위 ↘ 드래그로 조절)`;
+          }
         }
       };
 
@@ -637,6 +712,11 @@ function activateHotspot(hs) {
 
   if (hs.type === 'article') {
     openArticleModal(hs);
+    return;
+  }
+
+  if (hs.type === 'toc' || hs.type === 'jump_area') {
+    goToDisplayPage(hs.targetPage || 1);
   }
 }
 
@@ -843,6 +923,8 @@ function updatePagerUi() {
   el.pageIndicator.textContent = rightIndex >= 0
     ? `${leftIndex + 1} - ${rightIndex + 1} / ${total}`
     : `${leftIndex + 1} / ${total}`;
+  el.pageJumpTotal.textContent = `/ ${total}`;
+  el.pageJumpInput.max = String(total);
 
   const atStart = leftIndex <= 0;
   const atEnd = (rightIndex >= 0 ? rightIndex : leftIndex) >= total - 1;
@@ -953,6 +1035,12 @@ function goToIndex(idx) {
   renderSpread();
 }
 
+function goToDisplayPage(pageNum) {
+  const parsed = Number(pageNum);
+  if (!Number.isFinite(parsed) || parsed < 1) return;
+  goToIndex(Math.round(parsed) - 1);
+}
+
 function stepSpread(dir) {
   const delta = state.layout === 'double' ? 2 : 1;
   goToIndex(state.currentIndex + dir * delta);
@@ -1055,6 +1143,8 @@ function handleOverlayClick(e, overlayEl) {
   const tool = state.activeTool;
   const isAnswer = tool === 'answer_text' || tool === 'answer_image';
   const answerKind = tool === 'answer_image' ? 'image' : 'text';
+  const isToc = tool === 'toc';
+  const isJumpArea = tool === 'jump_area';
 
   const newHotspot = {
     id: `hs-${Date.now()}`,
@@ -1070,8 +1160,15 @@ function handleOverlayClick(e, overlayEl) {
           ? '새 기사 링크'
           : tool === 'answer_image'
             ? '정답 이미지'
-            : '정답 확인',
-    url: isAnswer ? '' : 'https://',
+            : isToc
+              ? '차례'
+              : isJumpArea
+                ? '주제 이동'
+                : '정답 확인',
+    targetPage: isToc ? 2 : isJumpArea ? 6 : undefined,
+    boxWidth: isJumpArea ? 38 : undefined,
+    boxHeight: isJumpArea ? 6 : undefined,
+    url: isAnswer || isToc || isJumpArea ? '' : 'https://',
     note: '',
     answer: tool === 'answer_text' ? '정답' : '',
     answerImage: '',
@@ -1088,7 +1185,11 @@ function handleOverlayClick(e, overlayEl) {
   showToast(
     tool === 'answer_image'
       ? '정답(이미지) 버튼이 배치되었습니다. 오른쪽에서 이미지를 불러오세요.'
-      : '버튼이 배치되었습니다. 오른쪽 패널에서 내용을 편집하세요.'
+      : isJumpArea
+        ? '투명 버튼이 배치되었습니다. 모서리 ↘ 드래그로 크기를 맞추고 이동 페이지를 입력하세요.'
+        : isToc
+          ? '차례 버튼이 배치되었습니다. 오른쪽에서 이동할 페이지를 설정하세요.'
+          : '버튼이 배치되었습니다. 오른쪽 패널에서 내용을 편집하세요.'
   );
 }
 
@@ -1214,11 +1315,9 @@ async function handleCloudSave() {
     if (!state.user) return;
   }
 
-  const cleanHotspots = state.hotspots.map((h) => {
-    const copy = { ...h };
-    if (copy.answerKind === undefined) delete copy.answerKind;
-    return copy;
-  });
+  const cleanHotspots = state.hotspots.map((h) =>
+    Object.fromEntries(Object.entries(h).filter(([, val]) => val !== undefined))
+  );
 
   const payload = {
     title: state.bookTitle,
@@ -1393,6 +1492,17 @@ function bindInspectorEvents() {
         hs.type = 'answer';
         hs.answerKind = 'image';
         if (!hs.answerWidth) hs.answerWidth = 30;
+      } else if (val === 'toc') {
+        hs.type = 'toc';
+        if (!hs.title || hs.title === '새 영상 링크') hs.title = '차례';
+        if (!hs.targetPage) hs.targetPage = 2;
+        delete hs.answerKind;
+      } else if (val === 'jump_area') {
+        hs.type = 'jump_area';
+        if (!hs.boxWidth) hs.boxWidth = 38;
+        if (!hs.boxHeight) hs.boxHeight = 6;
+        if (!hs.targetPage) hs.targetPage = 6;
+        delete hs.answerKind;
       } else {
         hs.type = val;
         delete hs.answerKind;
@@ -1401,6 +1511,12 @@ function bindInspectorEvents() {
   });
 
   el.propTitle.addEventListener('input', () => updateSelected((hs) => { hs.title = el.propTitle.value; }));
+  el.propTargetPage.addEventListener('input', () => {
+    const val = Number(el.propTargetPage.value);
+    updateSelected((hs) => {
+      hs.targetPage = Number.isFinite(val) && val >= 1 ? Math.round(val) : 1;
+    });
+  });
   el.propUrl.addEventListener('input', () => updateSelected((hs) => { hs.url = el.propUrl.value; }));
   el.propNote.addEventListener('input', () => updateSelected((hs) => { hs.note = el.propNote.value; }));
   el.propAnswer.addEventListener('input', () => updateSelected((hs) => { hs.answer = el.propAnswer.value; }));
@@ -1540,12 +1656,50 @@ function bindEvents() {
   el.firstPageBtn.addEventListener('click', () => goToIndex(0));
   el.lastPageBtn.addEventListener('click', () => goToIndex(state.activePages.length - 1));
 
+  // Clickable page indicator -> inline page number jump input
+  const closePageJump = (applyValue) => {
+    if (el.pageJumpForm.hidden) return;
+    if (applyValue) {
+      const val = Number(el.pageJumpInput.value);
+      if (Number.isFinite(val) && val >= 1) {
+        goToDisplayPage(val);
+      }
+    }
+    el.pageJumpForm.hidden = true;
+    el.pageIndicator.hidden = false;
+  };
+
+  el.pageIndicator.addEventListener('click', () => {
+    const { leftIndex } = getVisiblePages();
+    el.pageIndicator.hidden = true;
+    el.pageJumpForm.hidden = false;
+    el.pageJumpInput.value = String(leftIndex + 1);
+    el.pageJumpInput.focus();
+    el.pageJumpInput.select();
+  });
+
+  el.pageJumpForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    closePageJump(true);
+  });
+
+  el.pageJumpInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      closePageJump(false);
+    }
+  });
+
+  el.pageJumpInput.addEventListener('blur', () => {
+    closePageJump(true);
+  });
+
   el.zoomInBtn.addEventListener('click', () => setZoom(state.zoom + 0.15));
   el.zoomOutBtn.addEventListener('click', () => setZoom(state.zoom - 0.15));
   el.zoomResetBtn.addEventListener('click', () => {
     state.panX = 0;
     state.panY = 0;
-    setZoom(1);
+    setZoom(DEFAULT_ZOOM);
   });
 
   el.toggleLayoutBtn.addEventListener('click', () => {
@@ -1604,6 +1758,8 @@ async function init() {
   loadSavedState();
   el.bookTitleInput.value = state.bookTitle;
   el.pdfPathInput.value = state.pdfUrl || '';
+  applyZoomAndPan();
+  el.zoomLabel.textContent = `${Math.round(state.zoom * 100)}%`;
   bindEvents();
   await renderSpread();
 
