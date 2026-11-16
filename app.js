@@ -90,6 +90,8 @@ const el = {
   revealAllAnswersBtn: document.getElementById('revealAllAnswersBtn'),
   fullscreenBtn: document.getElementById('fullscreenBtn'),
   inspectorPanel: document.getElementById('inspectorPanel'),
+  inspectorEmptyState: document.getElementById('inspectorEmptyState'),
+  inspectorForm: document.getElementById('inspectorForm'),
   closeInspectorBtn: document.getElementById('closeInspectorBtn'),
   propType: document.getElementById('propType'),
   propTitle: document.getElementById('propTitle'),
@@ -222,10 +224,12 @@ function setMode(mode) {
   state.mode = mode;
   const isEditor = mode === 'editor';
   el.appShell.classList.toggle('is-editor', isEditor);
+  el.appShell.classList.toggle('has-inspector', isEditor);
   el.editorToolbar.hidden = !isEditor;
   el.editorHeaderActions.hidden = !isEditor;
   el.enterEditorBtn.hidden = isEditor;
   el.cloudStatusBadge.hidden = !isEditor;
+  el.inspectorPanel.hidden = !isEditor;
   el.bookTitleInput.readOnly = !isEditor;
   updateCloudUi();
 
@@ -234,6 +238,7 @@ function setMode(mode) {
     selectHotspot(null);
   } else {
     el.pdfPathInput.value = state.pdfUrl || '';
+    selectHotspot(state.selectedId);
     showToast('편집자 모드입니다. 수정 후 상단 "클라우드 저장"을 눌러 반영하세요.');
   }
   renderHotspots();
@@ -290,9 +295,13 @@ function syncSelectionClasses() {
 function selectHotspot(id) {
   state.selectedId = id;
   const hs = state.hotspots.find((item) => item.id === id) || null;
-  const showInspector = state.mode === 'editor' && Boolean(hs);
-  el.inspectorPanel.hidden = !showInspector;
-  el.appShell.classList.toggle('has-inspector', showInspector);
+  const isEditor = state.mode === 'editor';
+  el.inspectorPanel.hidden = !isEditor;
+  el.appShell.classList.toggle('has-inspector', isEditor);
+
+  el.inspectorForm.hidden = !hs;
+  el.inspectorEmptyState.hidden = Boolean(hs);
+  el.closeInspectorBtn.hidden = !hs;
 
   if (hs) {
     syncInspectorForm(hs);
@@ -1020,15 +1029,21 @@ function setupStagePanning() {
   });
 }
 
+let pointerDownOnEmptyOverlay = false;
+
 function handleOverlayClick(e, overlayEl) {
   if (state.suppressNextStageClick) return;
   if (state.mode !== 'editor') return;
   if (e.target.closest('.hotspot-node')) return;
 
   if (!state.activeTool) {
-    selectHotspot(null);
+    if (pointerDownOnEmptyOverlay && e.target === overlayEl) {
+      selectHotspot(null);
+    }
+    pointerDownOnEmptyOverlay = false;
     return;
   }
+  pointerDownOnEmptyOverlay = false;
 
   const pageNum = Number(overlayEl.dataset.page);
   if (!pageNum) return;
@@ -1357,6 +1372,8 @@ async function importJson(file) {
 }
 
 function bindInspectorEvents() {
+  el.inspectorForm.addEventListener('submit', (e) => e.preventDefault());
+
   const updateSelected = (updater) => {
     const hs = state.hotspots.find((item) => item.id === state.selectedId);
     if (!hs) return;
@@ -1454,6 +1471,12 @@ function bindEvents() {
     pill.addEventListener('click', () => selectTool(pill.dataset.tool));
   });
 
+  el.leftOverlay.addEventListener('pointerdown', (e) => {
+    pointerDownOnEmptyOverlay = e.target === el.leftOverlay;
+  });
+  el.rightOverlay.addEventListener('pointerdown', (e) => {
+    pointerDownOnEmptyOverlay = e.target === el.rightOverlay;
+  });
   el.leftOverlay.addEventListener('click', (e) => handleOverlayClick(e, el.leftOverlay));
   el.rightOverlay.addEventListener('click', (e) => handleOverlayClick(e, el.rightOverlay));
 
