@@ -183,6 +183,23 @@ body {
   background: transparent;
 }
 
+.editor-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn--editor-entry {
+  background: #f5f3ff;
+  border-color: #ddd6fe;
+  color: #5b21b6;
+}
+
+.btn--editor-entry:hover {
+  background: #ede9fe;
+  border-color: #c4b5fd;
+}
+
 .btn--cloud {
   background: #059669;
   border-color: #059669;
@@ -300,6 +317,11 @@ body {
   background: var(--answer-color);
 }
 
+.hotspot-preview--answer-img {
+  background: #ea580c;
+  font-size: 11px;
+}
+
 .editor-toolbar__pdf {
   display: flex;
   align-items: center;
@@ -393,9 +415,19 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  overflow: auto;
+  overflow: hidden;
   padding: 18px 54px;
   background: radial-gradient(circle at center, #f4f7fb 0%, #dce4f0 100%);
+}
+
+.book-stage.is-zoomed {
+  cursor: grab;
+  touch-action: none;
+}
+
+.book-stage.is-panning {
+  cursor: grabbing;
+  user-select: none;
 }
 
 .side-nav-btn {
@@ -450,6 +482,10 @@ body {
 .book-zoom-wrap {
   transform-origin: center center;
   transition: transform 0.16s ease;
+}
+
+.book-zoom-wrap.is-panning {
+  transition: none;
 }
 
 .book-spread {
@@ -701,6 +737,16 @@ body {
   overflow: visible;
   cursor: pointer;
   animation: popIn 0.15s ease-out;
+}
+
+.answer-image-placeholder {
+  padding: 14px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #1d4ed8;
+  text-align: center;
+  background: rgba(239, 246, 255, 0.9);
+  border-radius: 6px;
 }
 
 .answer-image-box img {

@@ -25,47 +25,47 @@
           aria-label="교과서 제목"
           readonly
         />
-        <span id="cloudStatusBadge" class="cloud-badge">연결 확인 중...</span>
-      </div>
-
-      <div class="top-bar__center">
-        <div class="mode-switch" role="tablist" aria-label="모드 전환">
-          <button id="viewerModeBtn" class="mode-switch__btn is-active" type="button" role="tab" aria-selected="true">
-            <span class="mode-dot mode-dot--viewer"></span>
-            관찰자 모드
-          </button>
-          <button id="editorModeBtn" class="mode-switch__btn" type="button" role="tab" aria-selected="false">
-            <span class="mode-dot mode-dot--editor"></span>
-            편집자 모드
-          </button>
-        </div>
+        <span id="cloudStatusBadge" class="cloud-badge" hidden>연결 확인 중...</span>
       </div>
 
       <div class="top-bar__right">
-        <label class="btn btn--secondary btn--file" for="pdfUploadInput" title="내 PC의 PDF 파일 미리보기">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-          PDF 열기
-        </label>
-        <input id="pdfUploadInput" type="file" accept="application/pdf" hidden />
+        <!-- Editor-only actions (hidden in clean Observer view) -->
+        <div id="editorHeaderActions" class="editor-header-actions" hidden>
+          <label class="btn btn--secondary btn--file" for="pdfUploadInput" title="내 PC의 PDF 파일 미리보기">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            PDF 열기
+          </label>
+          <input id="pdfUploadInput" type="file" accept="application/pdf" hidden />
 
-        <button id="cloudSaveBtn" class="btn btn--cloud" type="button" title="편집 내용을 Firebase 클라우드에 저장" hidden>
-          클라우드 저장
-        </button>
+          <button id="cloudSaveBtn" class="btn btn--cloud" type="button" title="편집 내용을 Firebase 클라우드에 저장">
+            클라우드 저장
+          </button>
 
-        <button id="authBtn" class="btn btn--ghost" type="button" title="관리자 구글 로그인">
-          관리자 로그인
-        </button>
+          <button id="exportJsonBtn" class="btn btn--ghost" type="button" title="배치 데이터(JSON) 내보내기">
+            JSON 백업
+          </button>
+          <label class="btn btn--ghost btn--file" for="importJsonInput" title="JSON 데이터 불러오기">
+            불러오기
+          </label>
+          <input id="importJsonInput" type="file" accept="application/json" hidden />
 
-        <button id="exportJsonBtn" class="btn btn--ghost" type="button" title="배치 데이터(JSON) 내보내기">
-          JSON 백업
-        </button>
-        <label class="btn btn--ghost btn--file" for="importJsonInput" title="JSON 데이터 불러오기">
-          불러오기
-        </label>
-        <input id="importJsonInput" type="file" accept="application/json" hidden />
+          <button id="resetDemoBtn" class="btn btn--ghost" type="button" title="기본 시안으로 초기화">
+            초기화
+          </button>
 
-        <button id="resetDemoBtn" class="btn btn--ghost" type="button" title="기본 시안으로 초기화" hidden>
-          초기화
+          <button id="logoutBtn" class="btn btn--ghost" type="button" title="관리자 로그아웃" hidden>
+            로그아웃
+          </button>
+
+          <button id="exitEditorBtn" class="btn btn--ghost" type="button">
+            관찰자 보기
+          </button>
+        </div>
+
+        <!-- Single entry button shown in Observer view -->
+        <button id="enterEditorBtn" class="btn btn--editor-entry" type="button">
+          <span class="mode-dot mode-dot--editor"></span>
+          편집자 모드
         </button>
       </div>
     </header>
@@ -73,7 +73,7 @@
     <!-- Editor Palette Bar (visible only in Editor Mode) -->
     <div id="editorToolbar" class="editor-toolbar" hidden>
       <div class="editor-toolbar__group">
-        <span class="editor-toolbar__label">버튼 배치 도구:</span>
+        <span class="editor-toolbar__label">버튼 배치:</span>
         <button class="tool-pill" data-tool="video" type="button">
           <span class="hotspot-preview hotspot-preview--video">▶</span>
           영상 링크
@@ -82,9 +82,13 @@
           <span class="hotspot-preview hotspot-preview--article">🌐</span>
           기사/웹 링크
         </button>
-        <button class="tool-pill" data-tool="answer" type="button">
+        <button class="tool-pill" data-tool="answer_text" type="button">
           <span class="hotspot-preview hotspot-preview--answer">?</span>
-          정답 보여주기
+          정답(텍스트)
+        </button>
+        <button class="tool-pill" data-tool="answer_image" type="button">
+          <span class="hotspot-preview hotspot-preview--answer-img">🖼</span>
+          정답(이미지)
         </button>
       </div>
 
@@ -101,7 +105,7 @@
       </div>
 
       <div class="editor-toolbar__hint" id="editorHint">
-        도구 선택 후 페이지를 클릭하세요. 기존 버튼은 드래그로 이동합니다.
+        도구 선택 후 페이지를 클릭하세요. 기존 버튼은 클릭해 편집하거나 드래그로 이동합니다.
       </div>
     </div>
 
@@ -182,7 +186,8 @@
             <select id="propType">
               <option value="video">영상 링크 (재생 버튼)</option>
               <option value="article">신문기사 / 웹 링크 (지구본)</option>
-              <option value="answer">정답 보여주기 (? 버튼)</option>
+              <option value="answer_text">정답 보여주기 (텍스트)</option>
+              <option value="answer_image">정답 보여주기 (이미지)</option>
             </select>
           </div>
 
@@ -205,13 +210,13 @@
 
           <!-- Answer Text -->
           <div class="form-field" id="answerFieldGroup" hidden>
-            <label for="propAnswer">정답 텍스트</label>
-            <input id="propAnswer" type="text" placeholder="예: 병원 (이미지 사용 시 비워도 됨)" />
+            <label for="propAnswer" id="propAnswerLabel">정답 텍스트</label>
+            <input id="propAnswer" type="text" placeholder="예: 병원" />
           </div>
 
           <!-- Answer Image -->
           <div class="form-field" id="answerImageGroup" hidden>
-            <label>정답 이미지 (선택)</label>
+            <label>정답 이미지</label>
             <div class="image-upload-row">
               <label class="btn btn--secondary btn--file" for="propAnswerImageInput">
                 이미지 불러오기
@@ -222,7 +227,7 @@
             <div id="answerImagePreviewWrap" class="answer-image-preview-wrap" hidden>
               <img id="answerImagePreview" alt="정답 이미지 미리보기" />
               <div class="answer-size-hint" id="answerBoxSizeLabel">
-                크기: 가로 28% (페이지에서 모서리 ↘ 드래그로 조절)
+                크기: 가로 30% (페이지에서 모서리 ↘ 드래그로 조절)
               </div>
             </div>
           </div>
@@ -263,7 +268,7 @@
         <button id="zoomInBtn" class="tool-icon-btn" type="button" title="확대">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
         </button>
-        <button id="zoomResetBtn" class="tool-icon-btn" type="button" title="화면 맞춤">1:1</button>
+        <button id="zoomResetBtn" class="tool-icon-btn" type="button" title="화면 맞춤 (위치 초기화)">1:1</button>
       </div>
 
       <div class="bottom-bar__group bottom-bar__pager">
