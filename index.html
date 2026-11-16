@@ -341,6 +341,15 @@
     </div>
   </div>
 
+  <!-- Editor Right-Click Context Menu -->
+  <div id="hotspotContextMenu" class="context-menu" role="menu" hidden>
+    <button id="ctxDuplicateBtn" class="context-menu__item" type="button">복제하기</button>
+    <button id="ctxCopyBtn" class="context-menu__item" type="button">복사 (Ctrl+C)</button>
+    <button id="ctxPasteBtn" class="context-menu__item" type="button" hidden>여기에 붙여넣기 (Ctrl+V)</button>
+    <div id="ctxDivider" class="context-menu__divider"></div>
+    <button id="ctxDeleteBtn" class="context-menu__item context-menu__item--danger" type="button">삭제 (Delete)</button>
+  </div>
+
   <!-- Toast Notification -->
   <div id="toast" class="toast" hidden></div>
 

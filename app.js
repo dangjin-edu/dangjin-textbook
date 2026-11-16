@@ -28,8 +28,11 @@ const state = {
   pageAspectRatio: 1 / 1.32,
   hotspots: [],
   revealedAnswers: new Set(),
-  activeTool: null, // 'video' | 'article' | 'answer_text' | 'answer_image' | null
+  activeTool: null, // 'video' | 'article' | 'answer_text' | 'answer_image' | 'toc' | 'jump_area' | null
   selectedId: null,
+  clipboardHotspot: null,
+  contextTargetId: null,
+  contextEmptyTarget: null,
   user: null,
   renderTasks: { left: null, right: null }
 };
@@ -131,6 +134,12 @@ const el = {
   modalBody: document.getElementById('modalBody'),
   modalFooter: document.getElementById('modalFooter'),
   closeModalBtn: document.getElementById('closeModalBtn'),
+  hotspotContextMenu: document.getElementById('hotspotContextMenu'),
+  ctxDuplicateBtn: document.getElementById('ctxDuplicateBtn'),
+  ctxCopyBtn: document.getElementById('ctxCopyBtn'),
+  ctxPasteBtn: document.getElementById('ctxPasteBtn'),
+  ctxDivider: document.getElementById('ctxDivider'),
+  ctxDeleteBtn: document.getElementById('ctxDeleteBtn'),
   toast: document.getElementById('toast')
 };
 
@@ -231,6 +240,7 @@ function getVisiblePages() {
 
 function setMode(mode) {
   state.mode = mode;
+  closeHotspotContextMenu();
   const isEditor = mode === 'editor';
   el.appShell.classList.toggle('is-editor', isEditor);
   el.appShell.classList.toggle('has-inspector', isEditor);
@@ -536,6 +546,104 @@ function renderOverlay(overlayEl, pageNum) {
   }
 }
 
+function closeHotspotContextMenu() {
+  el.hotspotContextMenu.hidden = true;
+  state.contextTargetId = null;
+  state.contextEmptyTarget = null;
+}
+
+function openHotspotContextMenu(clientX, clientY, hotspotId, emptyTarget) {
+  if (state.mode !== 'editor') return;
+  state.contextTargetId = hotspotId || null;
+  state.contextEmptyTarget = emptyTarget || null;
+
+  const isOnHotspot = Boolean(hotspotId);
+  el.ctxDuplicateBtn.hidden = !isOnHotspot;
+  el.ctxCopyBtn.hidden = !isOnHotspot;
+  el.ctxDivider.hidden = !isOnHotspot;
+  el.ctxDeleteBtn.hidden = !isOnHotspot;
+  el.ctxPasteBtn.hidden = isOnHotspot || !state.clipboardHotspot;
+
+  if (el.ctxDuplicateBtn.hidden && el.ctxPasteBtn.hidden) {
+    closeHotspotContextMenu();
+    return;
+  }
+
+  el.hotspotContextMenu.hidden = false;
+  const menuRect = el.hotspotContextMenu.getBoundingClientRect();
+  const maxLeft = Math.max(8, window.innerWidth - menuRect.width - 8);
+  const maxTop = Math.max(8, window.innerHeight - menuRect.height - 8);
+  el.hotspotContextMenu.style.left = `${Math.min(clientX, maxLeft)}px`;
+  el.hotspotContextMenu.style.top = `${Math.min(clientY, maxTop)}px`;
+}
+
+function copyHotspotById(id) {
+  const hs = state.hotspots.find((item) => item.id === id);
+  if (!hs) return false;
+  state.clipboardHotspot = { ...hs };
+  showToast('버튼을 복사했습니다. (Ctrl+V 또는 빈 곳 우클릭으로 붙여넣기)');
+  return true;
+}
+
+function cloneHotspotAt(source, targetPage, targetX, targetY) {
+  const copy = {
+    ...source,
+    id: `hs-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    page: targetPage,
+    x: Number(Math.min(96, Math.max(4, targetX)).toFixed(1)),
+    y: Number(Math.min(96, Math.max(4, targetY)).toFixed(1))
+  };
+  state.hotspots.push(copy);
+  persistState();
+  renderHotspots();
+  selectHotspot(copy.id);
+  return copy;
+}
+
+function duplicateHotspotById(id) {
+  const hs = state.hotspots.find((item) => item.id === id);
+  if (!hs) return;
+  cloneHotspotAt(hs, hs.page, hs.x + 3, hs.y + 3);
+  showToast('버튼을 복제했습니다.');
+}
+
+function pasteHotspotFromClipboard(targetOverride) {
+  if (!state.clipboardHotspot) return;
+  const src = state.clipboardHotspot;
+  let targetPage = src.page;
+  let nextX = src.x + 3;
+  let nextY = src.y + 3;
+
+  if (targetOverride) {
+    targetPage = targetOverride.page;
+    nextX = targetOverride.x;
+    nextY = targetOverride.y;
+  } else {
+    const { leftPage, rightPage } = getVisiblePages();
+    if (src.page !== leftPage && src.page !== rightPage) {
+      targetPage = leftPage || rightPage || src.page;
+    }
+  }
+
+  const created = cloneHotspotAt(src, targetPage, nextX, nextY);
+  // Nudge clipboard offset so repeated Ctrl+V cascades neatly
+  state.clipboardHotspot = { ...created };
+  showToast('버튼을 붙여넣었습니다.');
+}
+
+function deleteHotspotById(id) {
+  if (!id) return;
+  const exists = state.hotspots.some((item) => item.id === id);
+  if (!exists) return;
+  state.hotspots = state.hotspots.filter((item) => item.id !== id);
+  persistState();
+  if (state.selectedId === id) {
+    selectHotspot(null);
+  }
+  renderHotspots();
+  showToast('버튼을 삭제했습니다.');
+}
+
 function attachHotspotEvents(node, triggerEl, hs, overlayEl) {
   let dragging = false;
   let resizing = false;
@@ -605,7 +713,9 @@ function attachHotspotEvents(node, triggerEl, hs, overlayEl) {
 
   node.addEventListener('pointerdown', (e) => {
     if (state.mode !== 'editor') return;
+    if (e.button !== 0) return;
     if (e.target.closest('.resize-handle')) return;
+    closeHotspotContextMenu();
     e.stopPropagation();
     e.preventDefault();
     selectHotspot(hs.id);
@@ -665,6 +775,14 @@ function attachHotspotEvents(node, triggerEl, hs, overlayEl) {
       return;
     }
     activateHotspot(hs);
+  });
+
+  node.addEventListener('contextmenu', (e) => {
+    if (state.mode !== 'editor') return;
+    e.preventDefault();
+    e.stopPropagation();
+    selectHotspot(hs.id);
+    openHotspotContextMenu(e.clientX, e.clientY, hs.id, null);
   });
 }
 
@@ -1590,12 +1708,7 @@ function bindInspectorEvents() {
   });
 
   el.deleteHotspotBtn.addEventListener('click', () => {
-    if (!state.selectedId) return;
-    state.hotspots = state.hotspots.filter((item) => item.id !== state.selectedId);
-    persistState();
-    selectHotspot(null);
-    renderHotspots();
-    showToast('버튼을 삭제했습니다.');
+    deleteHotspotById(state.selectedId);
   });
 
   el.closeInspectorBtn.addEventListener('click', () => selectHotspot(null));
@@ -1627,6 +1740,48 @@ function bindEvents() {
   });
   el.leftOverlay.addEventListener('click', (e) => handleOverlayClick(e, el.leftOverlay));
   el.rightOverlay.addEventListener('click', (e) => handleOverlayClick(e, el.rightOverlay));
+
+  const handleEmptyContextMenu = (e, overlayEl) => {
+    if (state.mode !== 'editor') return;
+    if (e.target.closest('.hotspot-node')) return;
+    if (!state.clipboardHotspot) return;
+    const pageNum = Number(overlayEl.dataset.page);
+    if (!pageNum) return;
+    e.preventDefault();
+    const rect = overlayEl.getBoundingClientRect();
+    const x = Number(Math.min(96, Math.max(4, ((e.clientX - rect.left) / rect.width) * 100)).toFixed(1));
+    const y = Number(Math.min(96, Math.max(4, ((e.clientY - rect.top) / rect.height) * 100)).toFixed(1));
+    openHotspotContextMenu(e.clientX, e.clientY, null, { page: pageNum, x, y });
+  };
+  el.leftOverlay.addEventListener('contextmenu', (e) => handleEmptyContextMenu(e, el.leftOverlay));
+  el.rightOverlay.addEventListener('contextmenu', (e) => handleEmptyContextMenu(e, el.rightOverlay));
+
+  el.ctxDuplicateBtn.addEventListener('click', () => {
+    const id = state.contextTargetId;
+    closeHotspotContextMenu();
+    duplicateHotspotById(id);
+  });
+  el.ctxCopyBtn.addEventListener('click', () => {
+    const id = state.contextTargetId;
+    closeHotspotContextMenu();
+    copyHotspotById(id);
+  });
+  el.ctxPasteBtn.addEventListener('click', () => {
+    const target = state.contextEmptyTarget;
+    closeHotspotContextMenu();
+    pasteHotspotFromClipboard(target);
+  });
+  el.ctxDeleteBtn.addEventListener('click', () => {
+    const id = state.contextTargetId;
+    closeHotspotContextMenu();
+    deleteHotspotById(id);
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!el.hotspotContextMenu.hidden && !e.target.closest('#hotspotContextMenu')) {
+      closeHotspotContextMenu();
+    }
+  });
 
   el.deleteLeftPageBtn.addEventListener('click', () => {
     const { leftIndex } = getVisiblePages();
@@ -1776,8 +1931,33 @@ function bindEvents() {
   });
 
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') closeModal();
-    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+    if (e.key === 'Escape') {
+      closeModal();
+      closeHotspotContextMenu();
+    }
+    const tag = e.target.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target.isContentEditable) return;
+
+    if (state.mode === 'editor') {
+      const mod = e.ctrlKey || e.metaKey;
+      const key = e.key.toLowerCase();
+      if (mod && key === 'c' && state.selectedId) {
+        e.preventDefault();
+        copyHotspotById(state.selectedId);
+        return;
+      }
+      if (mod && key === 'v' && state.clipboardHotspot) {
+        e.preventDefault();
+        pasteHotspotFromClipboard(null);
+        return;
+      }
+      if ((e.key === 'Delete' || e.key === 'Backspace') && state.selectedId) {
+        e.preventDefault();
+        deleteHotspotById(state.selectedId);
+        return;
+      }
+    }
+
     if (e.key === 'ArrowLeft') stepSpread(-1);
     if (e.key === 'ArrowRight') stepSpread(1);
   });
