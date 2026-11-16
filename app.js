@@ -624,8 +624,7 @@ function renderLineLayer(svgEl, overlayEl, pageNum) {
       hitLine.addEventListener('click', (e) => {
         e.stopPropagation();
         if (state.suppressNextStageClick) return;
-        state.revealedAnswers.delete(hs.id);
-        renderHotspots();
+        toggleAnswerHotspotInPlace(hs);
       });
       svgEl.appendChild(hitLine);
     }
@@ -703,6 +702,139 @@ function renderLineLayer(svgEl, overlayEl, pageNum) {
   }
 }
 
+function createHotspotNode(hs, overlayEl, svgEl) {
+  if (state.mode === 'viewer' && hs.type === 'line_answer' && state.revealedAnswers.has(hs.id)) {
+    return null;
+  }
+
+  const node = document.createElement('div');
+  node.className = 'hotspot-node';
+  if (state.mode === 'editor' && hs.id === state.selectedId) {
+    node.classList.add('is-selected');
+  }
+  node.style.left = `${hs.x}%`;
+  node.style.top = `${hs.y}%`;
+  node.style.setProperty('--hs-scale', String(hs.scale || 1));
+  node.dataset.id = hs.id;
+
+  const answerKind = getEffectiveAnswerKind(hs);
+  const isRevealed = state.mode === 'viewer' && (hs.type === 'answer' || hs.type === 'crossword_answer') && state.revealedAnswers.has(hs.id);
+
+  if (hs.type === 'jump_area') {
+    node.classList.add('is-jump-area');
+    node.style.width = `${hs.boxWidth || 38}%`;
+    node.style.height = `${hs.boxHeight || 6}%`;
+    const box = buildJumpAreaBox(hs, state.mode === 'editor');
+    node.appendChild(box);
+    attachHotspotEvents(node, box, hs, overlayEl, svgEl);
+  } else if (hs.type === 'crossword_answer' && (state.mode === 'editor' || isRevealed)) {
+    node.classList.add('is-crossword');
+    node.style.width = `${hs.boxWidth || 24}%`;
+    node.style.height = `${hs.boxHeight || 6}%`;
+    const grid = buildCrosswordBox(hs, state.mode === 'editor');
+    if (state.mode === 'viewer') {
+      grid.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (state.suppressNextStageClick) return;
+        toggleAnswerHotspotInPlace(hs);
+      });
+    } else {
+      attachHotspotEvents(node, grid, hs, overlayEl, svgEl);
+    }
+    node.appendChild(grid);
+  } else if (state.mode === 'editor' && hs.type === 'answer' && answerKind === 'image') {
+    node.classList.add('is-answer-box');
+    node.style.width = `${hs.answerWidth || 30}%`;
+    const box = buildAnswerImageBox(hs, true);
+    node.appendChild(box);
+    attachHotspotEvents(node, box, hs, overlayEl, svgEl);
+  } else if (isRevealed && hs.type === 'answer' && hs.answerStyle !== 'modal') {
+    if (answerKind === 'image' && hs.answerImage) {
+      node.classList.add('is-answer-box');
+      node.style.width = `${hs.answerWidth || 30}%`;
+      const box = buildAnswerImageBox(hs, false);
+      box.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (state.suppressNextStageClick) return;
+        toggleAnswerHotspotInPlace(hs);
+      });
+      node.appendChild(box);
+    } else {
+      const pill = document.createElement('button');
+      pill.type = 'button';
+      pill.className = 'answer-pill';
+      const fallbackMsg = answerKind === 'image' ? '(정답 이미지 미등록)' : '(정답 미입력)';
+      pill.textContent = (hs.answer && hs.answer.trim()) ? hs.answer : fallbackMsg;
+      pill.title = '누르면 ? 버튼으로 돌아갑니다';
+      pill.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (state.suppressNextStageClick) return;
+        toggleAnswerHotspotInPlace(hs);
+      });
+      node.appendChild(pill);
+    }
+  } else {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = `hotspot-btn hotspot-btn--${hs.type}`;
+    btn.title = hs.type === 'toc' ? `${hs.targetPage || 1}쪽으로 이동` : (hs.title || '');
+    btn.innerHTML = hs.type === 'toc' ? escapeHtml(hs.title || '차례') : getIconSvg(hs.type);
+    if (hs.type === 'line_answer' && hs.lineColor) {
+      btn.style.background = hs.lineColor;
+    }
+    node.appendChild(btn);
+
+    if (state.mode === 'editor') {
+      const tag = document.createElement('span');
+      tag.className = 'hotspot-editor-tag';
+      if (hs.type === 'answer') {
+        tag.textContent = (hs.answer && hs.answer.trim()) || hs.title || '정답';
+      } else if (hs.type === 'toc') {
+        tag.textContent = `→ ${hs.targetPage || 1}쪽`;
+      } else if (hs.type === 'line_answer') {
+        tag.textContent = hs.title || '선 잇기';
+      } else {
+        tag.textContent = hs.title || hs.type;
+      }
+      node.appendChild(tag);
+    }
+
+    attachHotspotEvents(node, btn, hs, overlayEl, svgEl);
+  }
+
+  return node;
+}
+
+function toggleAnswerHotspotInPlace(hs) {
+  if (state.revealedAnswers.has(hs.id)) {
+    state.revealedAnswers.delete(hs.id);
+  } else {
+    state.revealedAnswers.add(hs.id);
+  }
+
+  const { leftPage, rightPage } = getVisiblePages();
+  const isLeft = hs.page === leftPage;
+  const isRight = hs.page === rightPage;
+  if (!isLeft && !isRight) return;
+
+  const overlayEl = isLeft ? el.leftOverlay : el.rightOverlay;
+  const svgEl = isLeft ? el.leftLineSvg : el.rightLineSvg;
+
+  if (hs.type === 'line_answer') {
+    renderLineLayer(svgEl, overlayEl, hs.page);
+  }
+
+  const existing = overlayEl.querySelector(`.hotspot-node[data-id="${hs.id}"]`);
+  const nextNode = createHotspotNode(hs, overlayEl, svgEl);
+  if (existing && nextNode) {
+    existing.replaceWith(nextNode);
+  } else if (existing && !nextNode) {
+    existing.remove();
+  } else if (!existing && nextNode) {
+    overlayEl.appendChild(nextNode);
+  }
+}
+
 function renderOverlay(overlayEl, pageNum, svgEl) {
   overlayEl.innerHTML = '';
   if (svgEl) svgEl.innerHTML = '';
@@ -716,113 +848,10 @@ function renderOverlay(overlayEl, pageNum, svgEl) {
 
   const list = state.hotspots.filter((h) => h.page === pageNum);
   for (const hs of list) {
-    if (state.mode === 'viewer' && hs.type === 'line_answer' && state.revealedAnswers.has(hs.id)) {
-      // Revealed line is rendered on SVG layer; hide '?' button
-      continue;
+    const node = createHotspotNode(hs, overlayEl, svgEl);
+    if (node) {
+      overlayEl.appendChild(node);
     }
-
-    const node = document.createElement('div');
-    node.className = 'hotspot-node';
-    if (state.mode === 'editor' && hs.id === state.selectedId) {
-      node.classList.add('is-selected');
-    }
-    node.style.left = `${hs.x}%`;
-    node.style.top = `${hs.y}%`;
-    node.style.setProperty('--hs-scale', String(hs.scale || 1));
-    node.dataset.id = hs.id;
-
-    const answerKind = getEffectiveAnswerKind(hs);
-    const isRevealed = state.mode === 'viewer' && (hs.type === 'answer' || hs.type === 'crossword_answer') && state.revealedAnswers.has(hs.id);
-
-    if (hs.type === 'jump_area') {
-      node.classList.add('is-jump-area');
-      node.style.width = `${hs.boxWidth || 38}%`;
-      node.style.height = `${hs.boxHeight || 6}%`;
-      const box = buildJumpAreaBox(hs, state.mode === 'editor');
-      node.appendChild(box);
-      attachHotspotEvents(node, box, hs, overlayEl, svgEl);
-    } else if (hs.type === 'crossword_answer' && (state.mode === 'editor' || isRevealed)) {
-      node.classList.add('is-crossword');
-      node.style.width = `${hs.boxWidth || 24}%`;
-      node.style.height = `${hs.boxHeight || 6}%`;
-      const grid = buildCrosswordBox(hs, state.mode === 'editor');
-      if (state.mode === 'viewer') {
-        grid.addEventListener('click', (e) => {
-          e.stopPropagation();
-          if (state.suppressNextStageClick) return;
-          state.revealedAnswers.delete(hs.id);
-          renderHotspots();
-        });
-      } else {
-        attachHotspotEvents(node, grid, hs, overlayEl, svgEl);
-      }
-      node.appendChild(grid);
-    } else if (state.mode === 'editor' && hs.type === 'answer' && answerKind === 'image') {
-      // Editor mode for image-type answer: show WYSIWYG resizable box
-      node.classList.add('is-answer-box');
-      node.style.width = `${hs.answerWidth || 30}%`;
-      const box = buildAnswerImageBox(hs, true);
-      node.appendChild(box);
-      attachHotspotEvents(node, box, hs, overlayEl, svgEl);
-    } else if (isRevealed && hs.type === 'answer' && hs.answerStyle !== 'modal') {
-      // Viewer mode revealed: hide '?' and show answer (image or text pill)
-      if (answerKind === 'image' && hs.answerImage) {
-        node.classList.add('is-answer-box');
-        node.style.width = `${hs.answerWidth || 30}%`;
-        const box = buildAnswerImageBox(hs, false);
-        box.addEventListener('click', (e) => {
-          e.stopPropagation();
-          if (state.suppressNextStageClick) return;
-          state.revealedAnswers.delete(hs.id);
-          renderHotspots();
-        });
-        node.appendChild(box);
-      } else {
-        const pill = document.createElement('button');
-        pill.type = 'button';
-        pill.className = 'answer-pill';
-        const fallbackMsg = answerKind === 'image' ? '(정답 이미지 미등록)' : '(정답 미입력)';
-        pill.textContent = (hs.answer && hs.answer.trim()) ? hs.answer : fallbackMsg;
-        pill.title = '누르면 ? 버튼으로 돌아갑니다';
-        pill.addEventListener('click', (e) => {
-          e.stopPropagation();
-          if (state.suppressNextStageClick) return;
-          state.revealedAnswers.delete(hs.id);
-          renderHotspots();
-        });
-        node.appendChild(pill);
-      }
-    } else {
-      // Standard icon button (?, video, article, toc, line_answer, crossword_answer)
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = `hotspot-btn hotspot-btn--${hs.type}`;
-      btn.title = hs.type === 'toc' ? `${hs.targetPage || 1}쪽으로 이동` : (hs.title || '');
-      btn.innerHTML = hs.type === 'toc' ? escapeHtml(hs.title || '차례') : getIconSvg(hs.type);
-      if (hs.type === 'line_answer' && hs.lineColor) {
-        btn.style.background = hs.lineColor;
-      }
-      node.appendChild(btn);
-
-      if (state.mode === 'editor') {
-        const tag = document.createElement('span');
-        tag.className = 'hotspot-editor-tag';
-        if (hs.type === 'answer') {
-          tag.textContent = (hs.answer && hs.answer.trim()) || hs.title || '정답';
-        } else if (hs.type === 'toc') {
-          tag.textContent = `→ ${hs.targetPage || 1}쪽`;
-        } else if (hs.type === 'line_answer') {
-          tag.textContent = hs.title || '선 잇기';
-        } else {
-          tag.textContent = hs.title || hs.type;
-        }
-        node.appendChild(tag);
-      }
-
-      attachHotspotEvents(node, btn, hs, overlayEl, svgEl);
-    }
-
-    overlayEl.appendChild(node);
   }
 }
 
@@ -1127,12 +1156,7 @@ function activateHotspot(hs) {
       openAnswerModal(hs);
       return;
     }
-    if (state.revealedAnswers.has(hs.id)) {
-      state.revealedAnswers.delete(hs.id);
-    } else {
-      state.revealedAnswers.add(hs.id);
-    }
-    renderHotspots();
+    toggleAnswerHotspotInPlace(hs);
     return;
   }
 
@@ -1284,12 +1308,90 @@ function renderHotspots() {
   renderTocDrawer();
 }
 
+const MAX_PAGE_CACHE = 8;
+const pageRenderCache = new Map();
+const inFlightPageRenders = new Map();
+const slotRenderTokens = { left: 0, right: 0 };
+
+function clearPageRenderCache() {
+  for (const c of pageRenderCache.values()) {
+    c.width = 0;
+    c.height = 0;
+  }
+  pageRenderCache.clear();
+  inFlightPageRenders.clear();
+}
+
+function getCachedOffscreenPage(pdfPageNum) {
+  const cached = pageRenderCache.get(pdfPageNum);
+  if (!cached) return null;
+  // Refresh LRU order
+  pageRenderCache.delete(pdfPageNum);
+  pageRenderCache.set(pdfPageNum, cached);
+  return cached;
+}
+
+function storeOffscreenPage(pdfPageNum, offCanvas) {
+  if (pageRenderCache.has(pdfPageNum)) {
+    pageRenderCache.delete(pdfPageNum);
+  }
+  pageRenderCache.set(pdfPageNum, offCanvas);
+  while (pageRenderCache.size > MAX_PAGE_CACHE) {
+    const oldestKey = pageRenderCache.keys().next().value;
+    const oldestCanvas = pageRenderCache.get(oldestKey);
+    if (oldestCanvas) {
+      oldestCanvas.width = 0;
+      oldestCanvas.height = 0;
+    }
+    pageRenderCache.delete(oldestKey);
+  }
+}
+
+async function renderPdfPageToOffscreen(pdfPageNum, slotWidth) {
+  const cached = getCachedOffscreenPage(pdfPageNum);
+  if (cached) return cached;
+
+  if (inFlightPageRenders.has(pdfPageNum)) {
+    return inFlightPageRenders.get(pdfPageNum);
+  }
+
+  const job = (async () => {
+    const page = await state.pdfDoc.getPage(pdfPageNum);
+    const unscaledViewport = page.getViewport({ scale: 1 });
+    state.pageAspectRatio = unscaledViewport.width / unscaledViewport.height;
+
+    const dpr = Math.max(window.devicePixelRatio || 1, 2.5);
+    const desiredPixelWidth = Math.min(2200, Math.max(1800, Math.round((slotWidth || 460) * dpr * 1.6)));
+    const scale = desiredPixelWidth / unscaledViewport.width;
+    const viewport = page.getViewport({ scale });
+
+    const offCanvas = document.createElement('canvas');
+    offCanvas.width = Math.floor(viewport.width);
+    offCanvas.height = Math.floor(viewport.height);
+    const offCtx = offCanvas.getContext('2d', { alpha: false });
+    offCtx.fillStyle = '#ffffff';
+    offCtx.fillRect(0, 0, offCanvas.width, offCanvas.height);
+
+    await page.render({ canvasContext: offCtx, viewport }).promise;
+    storeOffscreenPage(pdfPageNum, offCanvas);
+    return offCanvas;
+  })();
+
+  inFlightPageRenders.set(pdfPageNum, job);
+  try {
+    return await job;
+  } finally {
+    inFlightPageRenders.delete(pdfPageNum);
+  }
+}
+
 async function renderSlot(side, pdfPageNum, displayNum) {
   const slot = side === 'left' ? el.leftPageSlot : el.rightPageSlot;
   const canvas = side === 'left' ? el.leftCanvas : el.rightCanvas;
   const sampleLayer = side === 'left' ? el.leftSamplePage : el.rightSamplePage;
   const badge = side === 'left' ? el.leftPageNum : el.rightPageNum;
 
+  const myToken = ++slotRenderTokens[side];
   slot.style.aspectRatio = String(state.pageAspectRatio);
 
   if (!pdfPageNum) {
@@ -1312,33 +1414,18 @@ async function renderSlot(side, pdfPageNum, displayNum) {
   }
 
   sampleLayer.innerHTML = '';
-  if (state.renderTasks[side]) {
-    try {
-      state.renderTasks[side].cancel();
-    } catch {
-      // Ignore cancellation errors
-    }
-  }
-
-  const page = await state.pdfDoc.getPage(pdfPageNum);
-  const unscaledViewport = page.getViewport({ scale: 1 });
-  state.pageAspectRatio = unscaledViewport.width / unscaledViewport.height;
-  slot.style.aspectRatio = String(state.pageAspectRatio);
-
-  const slotWidth = slot.clientWidth || 460;
-  const dpr = Math.max(window.devicePixelRatio || 1, 2.5);
-  const desiredPixelWidth = Math.min(2200, Math.max(1800, Math.round(slotWidth * dpr * 1.6)));
-  const scale = desiredPixelWidth / unscaledViewport.width;
-  const viewport = page.getViewport({ scale });
-
-  canvas.width = Math.floor(viewport.width);
-  canvas.height = Math.floor(viewport.height);
-  const ctx = canvas.getContext('2d');
-  const task = page.render({ canvasContext: ctx, viewport });
-  state.renderTasks[side] = task;
 
   try {
-    await task.promise;
+    const offCanvas = await renderPdfPageToOffscreen(pdfPageNum, slot.clientWidth || 460);
+    if (myToken !== slotRenderTokens[side]) return;
+
+    slot.style.aspectRatio = String(offCanvas.width / offCanvas.height);
+    if (canvas.width !== offCanvas.width || canvas.height !== offCanvas.height) {
+      canvas.width = offCanvas.width;
+      canvas.height = offCanvas.height;
+    }
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(offCanvas, 0, 0);
   } catch (err) {
     if (err && err.name !== 'RenderingCancelledException') {
       console.error(err);
@@ -1555,6 +1642,35 @@ function restoreAllPages() {
   showToast('삭제된 모든 페이지를 복구했습니다.');
 }
 
+let prefetchTimer = null;
+function prefetchAdjacentSpreads() {
+  if (!state.pdfDoc) return;
+  clearTimeout(prefetchTimer);
+  prefetchTimer = setTimeout(async () => {
+    const { leftIndex, rightIndex } = getVisiblePages();
+    const candidates = [];
+    if (rightIndex >= 0) {
+      if (rightIndex + 1 < state.activePages.length) candidates.push(state.activePages[rightIndex + 1]);
+      if (rightIndex + 2 < state.activePages.length) candidates.push(state.activePages[rightIndex + 2]);
+    } else if (leftIndex + 1 < state.activePages.length) {
+      candidates.push(state.activePages[leftIndex + 1]);
+    }
+    if (leftIndex - 1 >= 0) candidates.push(state.activePages[leftIndex - 1]);
+    if (leftIndex - 2 >= 0) candidates.push(state.activePages[leftIndex - 2]);
+
+    const slotWidth = el.leftPageSlot.clientWidth || 460;
+    for (const pdfPageNum of candidates) {
+      if (!state.pdfDoc) break;
+      if (pageRenderCache.has(pdfPageNum)) continue;
+      try {
+        await renderPdfPageToOffscreen(pdfPageNum, slotWidth);
+      } catch {
+        // Ignore background prefetch errors
+      }
+    }
+  }, 50);
+}
+
 async function renderSpread() {
   const { leftPage, rightPage, leftIndex, rightIndex } = getVisiblePages();
   updatePagerUi();
@@ -1563,6 +1679,7 @@ async function renderSpread() {
     renderSlot('right', rightPage, rightIndex + 1)
   ]);
   renderHotspots();
+  prefetchAdjacentSpreads();
 }
 
 function goToIndex(idx) {
@@ -1808,6 +1925,7 @@ function readImageAsResizedDataUrl(file) {
 }
 
 async function applyLoadedPdfDoc(doc, titleFallback, preserveActivePages) {
+  clearPageRenderCache();
   state.pdfDoc = doc;
   state.totalRawPages = doc.numPages;
   if (!preserveActivePages || !state.activePages.length) {
@@ -2306,6 +2424,7 @@ function bindEvents() {
 
   el.resetDemoBtn.addEventListener('click', () => {
     localStorage.removeItem(STORAGE_KEY);
+    clearPageRenderCache();
     state.pdfDoc = null;
     state.pdfUrl = '';
     el.pdfPathInput.value = '';

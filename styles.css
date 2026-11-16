@@ -1047,10 +1047,6 @@ body {
   box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.22);
 }
 
-.cw-grid.is-revealed {
-  animation: popIn 0.15s ease-out;
-}
-
 .cw-grid.is-revealed .cw-cell {
   background: rgba(255, 255, 255, 0.72);
   border-radius: 3px;
@@ -1135,7 +1131,6 @@ body {
   box-shadow: 0 3px 10px rgba(15, 23, 42, 0.15);
   white-space: nowrap;
   cursor: pointer;
-  animation: popIn 0.15s ease-out;
 }
 
 .answer-image-box {
@@ -1147,7 +1142,6 @@ body {
   box-shadow: 0 6px 18px rgba(15, 23, 42, 0.22);
   overflow: visible;
   cursor: pointer;
-  animation: popIn 0.15s ease-out;
 }
 
 .answer-image-placeholder {
