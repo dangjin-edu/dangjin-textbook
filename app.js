@@ -39,7 +39,6 @@ const state = {
   clipboardHotspot: null,
   contextTargetId: null,
   contextEmptyTarget: null,
-  activeCwCell: null,
   snapGuidesEnabled: true,
   user: null,
   renderTasks: { left: null, right: null }
@@ -158,11 +157,8 @@ const el = {
   propLineWidthVal: document.getElementById('propLineWidthVal'),
   lineCoordsHint: document.getElementById('lineCoordsHint'),
   crosswordSettingsGroup: document.getElementById('crosswordSettingsGroup'),
-  propCwCols: document.getElementById('propCwCols'),
-  propCwRows: document.getElementById('propCwRows'),
-  propCwRevealMode: document.getElementById('propCwRevealMode'),
-  propCwInputDir: document.getElementById('propCwInputDir'),
-  cwInspectorGrid: document.getElementById('cwInspectorGrid'),
+  propCwDirection: document.getElementById('propCwDirection'),
+  cwGridShapeBadge: document.getElementById('cwGridShapeBadge'),
   propCwColor: document.getElementById('propCwColor'),
   cwBoxSizeLabel: document.getElementById('cwBoxSizeLabel'),
   testHotspotBtn: document.getElementById('testHotspotBtn'),
@@ -376,7 +372,7 @@ function selectTool(tool) {
   } else if (state.activeTool === 'line_answer') {
     el.editorHint.textContent = '선 잇기 시작점(?)을 놓을 위치를 클릭하세요.';
   } else if (state.activeTool === 'crossword_answer') {
-    el.editorHint.textContent = '가로세로 낱말 퍼즐 판을 놓을 위치를 클릭하세요.';
+    el.editorHint.textContent = '가로/세로 낱말 칸을 놓을 위치를 클릭하세요.';
   } else {
     el.editorHint.textContent =
       '도구 선택 후 페이지를 클릭하세요. 기존 버튼은 클릭해 편집하거나 드래그로 이동합니다.';
@@ -430,11 +426,13 @@ function syncInspectorForm(hs) {
 
   el.urlFieldGroup.hidden = isAnswer || isPageNav || isLine || isCrossword;
   el.noteFieldGroup.hidden = !isArticle;
-  el.answerFieldGroup.hidden = !isAnswer;
-  el.propAnswerLabel.textContent = isImageAnswer
-    ? '정답 이미지 하단 설명 (선택)'
-    : '정답 텍스트';
-  el.propAnswer.placeholder = isImageAnswer ? '예: 아래 설명 참고 (비워둬도 됨)' : '예: 병원';
+  el.answerFieldGroup.hidden = !isAnswer && !isCrossword;
+  el.propAnswerLabel.textContent = isCrossword
+    ? '정답 낱말 (글자 수만큼 칸 자동 생성)'
+    : isImageAnswer
+      ? '정답 이미지 하단 설명 (선택)'
+      : '정답 텍스트';
+  el.propAnswer.placeholder = isCrossword ? '예: 당진시 (3글자 → 3×1)' : isImageAnswer ? '예: 아래 설명 참고 (비워둬도 됨)' : '예: 병원';
   el.answerImageGroup.hidden = !isImageAnswer;
   el.answerStyleGroup.hidden = !isAnswer;
   el.targetPageGroup.hidden = !isPageNav;
@@ -453,15 +451,10 @@ function syncInspectorForm(hs) {
     el.propLineWidthVal.textContent = String(hs.lineWidth || 4);
   }
   if (isCrossword) {
-    const cw = getCrosswordGridData(hs);
-    el.propCwCols.value = String(cw.cols);
-    el.propCwRows.value = String(cw.rows);
-    el.propCwRevealMode.value = cw.revealMode;
+    el.propCwDirection.value = hs.direction === 'vertical' ? 'vertical' : 'horizontal';
     el.propCwColor.value = hs.textColor || '#dc2626';
-    el.cwBoxSizeLabel.textContent = `퍼즐 크기: ${cw.cols}×${cw.rows}칸 (${Math.round(hs.boxWidth || 56)}%×${Math.round(hs.boxHeight || 42)}%) · 왼쪽 위 맞춘 뒤 ↘ 드래그`;
-    renderInspectorCrosswordGrid(hs);
-  } else {
-    el.cwInspectorGrid.innerHTML = '';
+    el.cwGridShapeBadge.textContent = getCrosswordShapeLabel(hs);
+    el.cwBoxSizeLabel.textContent = `크기: 가로 ${Math.round(hs.boxWidth || 24)}% × 세로 ${Math.round(hs.boxHeight || 6.5)}% (↘ 드래그로 칸 크기에 맞추세요)`;
   }
 
   const hasImage = Boolean(hs.answerImage);
@@ -549,373 +542,76 @@ function buildJumpAreaBox(hs, isEditorPreview) {
   return box;
 }
 
-function getCrosswordGridData(hs) {
-  let rows = Number(hs.cwRows);
-  let cols = Number(hs.cwCols);
-  let cells = Array.isArray(hs.cwCells) ? hs.cwCells.slice() : null;
-
-  if (!cells || !Number.isFinite(rows) || !Number.isFinite(cols)) {
-    // Backwards-compatible migration from legacy 1D answer + direction
-    const chars = Array.from((hs.answer || '').trim());
-    if (hs.direction === 'vertical') {
-      rows = Math.max(1, Math.min(15, chars.length || 3));
-      cols = 1;
-      cells = Array.from({ length: rows }, (_, i) => chars[i] || '');
-    } else if (chars.length > 0) {
-      rows = 1;
-      cols = Math.max(1, Math.min(15, chars.length));
-      cells = Array.from({ length: cols }, (_, i) => chars[i] || '');
-    } else {
-      rows = 5;
-      cols = 5;
-      cells = Array(25).fill('');
-    }
-  } else {
-    rows = Math.max(1, Math.min(15, Math.round(rows)));
-    cols = Math.max(1, Math.min(15, Math.round(cols)));
-  }
-
-  const total = rows * cols;
-  const normalized = Array.from({ length: total }, (_, idx) => {
-    const val = cells[idx];
-    return typeof val === 'string' ? val.trim() : '';
-  });
-
-  hs.cwRows = rows;
-  hs.cwCols = cols;
-  hs.cwCells = normalized;
-  if (hs.cwRevealMode !== 'all' && hs.cwRevealMode !== 'cell') {
-    hs.cwRevealMode = 'cell';
-  }
-  return { rows, cols, cells: normalized, revealMode: hs.cwRevealMode };
+function getCrosswordShapeLabel(hs) {
+  const count = Math.max(1, Array.from((hs.answer || '').trim()).length);
+  const isVert = hs.direction === 'vertical';
+  return isVert
+    ? `현재 형태: 1 × ${count} (세로 ${count}칸)`
+    : `현재 형태: ${count} × 1 (가로 ${count}칸)`;
 }
 
-function resizeCrosswordGrid(hs, nextRows, nextCols) {
-  const prev = getCrosswordGridData(hs);
-  const rows = Math.max(1, Math.min(15, Math.round(nextRows || prev.rows)));
-  const cols = Math.max(1, Math.min(15, Math.round(nextCols || prev.cols)));
-  const nextCells = Array(rows * cols).fill('');
+function getCrosswordFontSizePx(hs, overlayEl) {
+  const chars = Array.from((hs.answer || '').trim());
+  const count = Math.max(1, chars.length);
+  const dir = hs.direction === 'vertical' ? 'vertical' : 'horizontal';
+  const slotWidth = (overlayEl && overlayEl.clientWidth) || el.leftPageSlot.clientWidth || 460;
+  const ratio = state.pageAspectRatio || 1 / 1.32;
+  const slotHeight = (overlayEl && overlayEl.clientHeight) || slotWidth / ratio;
 
-  const copyR = Math.min(prev.rows, rows);
-  const copyC = Math.min(prev.cols, cols);
-  for (let r = 0; r < copyR; r += 1) {
-    for (let c = 0; c < copyC; c += 1) {
-      nextCells[r * cols + c] = prev.cells[r * prev.cols + c] || '';
-    }
-  }
-  hs.cwRows = rows;
-  hs.cwCols = cols;
-  hs.cwCells = nextCells;
+  const boxW = slotWidth * ((hs.boxWidth || (dir === 'horizontal' ? 24 : 6.5)) / 100);
+  const boxH = slotHeight * ((hs.boxHeight || (dir === 'vertical' ? 24 : 6.5)) / 100);
+  const cellW = dir === 'horizontal' ? boxW / count : boxW;
+  const cellH = dir === 'vertical' ? boxH / count : boxH;
+  return Math.max(10, Math.min(72, Math.floor(Math.min(cellW, cellH) * 0.64)));
 }
 
-function cwCellKey(hsId, row, col) {
-  return `${hsId}:${row}:${col}`;
-}
-
-function isCrosswordCellRevealed(hs, row, col) {
-  return state.revealedAnswers.has(hs.id) || state.revealedAnswers.has(cwCellKey(hs.id, row, col));
-}
-
-function areAllCrosswordCellsRevealed(hs) {
-  const { rows, cols, cells } = getCrosswordGridData(hs);
-  let hasAny = false;
-  for (let r = 0; r < rows; r += 1) {
-    for (let c = 0; c < cols; c += 1) {
-      if (!cells[r * cols + c]) continue;
-      hasAny = true;
-      if (!isCrosswordCellRevealed(hs, r, c)) return false;
-    }
-  }
-  return hasAny;
-}
-
-function clearCrosswordReveals(hs) {
-  state.revealedAnswers.delete(hs.id);
-  const prefix = `${hs.id}:`;
-  for (const key of Array.from(state.revealedAnswers)) {
-    if (String(key).startsWith(prefix)) {
-      state.revealedAnswers.delete(key);
-    }
-  }
-}
-
-function replaceHotspotNodeInPlace(hs) {
-  const { leftPage, rightPage } = getVisiblePages();
-  const isLeft = hs.page === leftPage;
-  const isRight = hs.page === rightPage;
-  if (!isLeft && !isRight) return;
-  const overlayEl = isLeft ? el.leftOverlay : el.rightOverlay;
-  const svgEl = isLeft ? el.leftLineSvg : el.rightLineSvg;
-  const existing = overlayEl.querySelector(`.hotspot-node[data-id="${hs.id}"]`);
-  const nextNode = createHotspotNode(hs, overlayEl, svgEl);
-  if (existing && nextNode) {
-    existing.replaceWith(nextNode);
-  } else if (existing && !nextNode) {
-    existing.remove();
-  } else if (!existing && nextNode) {
-    overlayEl.appendChild(nextNode);
-  }
-}
-
-function toggleCrosswordCellInPlace(hs, row, col) {
-  const { rows, cols } = getCrosswordGridData(hs);
-  const key = cwCellKey(hs.id, row, col);
-  if (state.revealedAnswers.has(hs.id)) {
-    // Expand whole-reveal into individual keys except the clicked cell
-    state.revealedAnswers.delete(hs.id);
-    for (let r = 0; r < rows; r += 1) {
-      for (let c = 0; c < cols; c += 1) {
-        if ((r !== row || c !== col) && hs.cwCells[r * cols + c]) {
-          state.revealedAnswers.add(cwCellKey(hs.id, r, c));
-        }
-      }
-    }
-  } else if (state.revealedAnswers.has(key)) {
-    state.revealedAnswers.delete(key);
-  } else {
-    state.revealedAnswers.add(key);
-  }
-  replaceHotspotNodeInPlace(hs);
-}
-
-function toggleWholeCrosswordInPlace(hs) {
-  if (areAllCrosswordCellsRevealed(hs)) {
-    clearCrosswordReveals(hs);
-  } else {
-    clearCrosswordReveals(hs);
-    state.revealedAnswers.add(hs.id);
-  }
-  replaceHotspotNodeInPlace(hs);
-}
-
-function syncCrosswordPageCellsDom(hs) {
-  const { leftPage, rightPage } = getVisiblePages();
-  const overlayEl = hs.page === leftPage ? el.leftOverlay : hs.page === rightPage ? el.rightOverlay : null;
-  if (!overlayEl) return;
-  const gridNode = overlayEl.querySelector(`.hotspot-node[data-id="${hs.id}"] .cw-grid`);
-  if (!gridNode) return;
-  const { rows, cols, cells } = getCrosswordGridData(hs);
-  const cellNodes = gridNode.querySelectorAll('.cw-cell');
-  if (cellNodes.length !== rows * cols) {
-    replaceHotspotNodeInPlace(hs);
-    return;
-  }
-  cellNodes.forEach((cellEl, idx) => {
-    const ch = cells[idx] || '';
-    const r = Math.floor(idx / cols);
-    const c = idx % cols;
-    cellEl.textContent = ch;
-    cellEl.classList.toggle('is-has-answer', Boolean(ch));
-    cellEl.classList.toggle(
-      'is-active-cell',
-      Boolean(state.activeCwCell && state.activeCwCell.id === hs.id && state.activeCwCell.row === r && state.activeCwCell.col === c)
-    );
+function syncCrosswordFontSizes() {
+  [el.leftOverlay, el.rightOverlay].forEach((overlayEl) => {
+    if (!overlayEl) return;
+    overlayEl.querySelectorAll('.hotspot-node.is-crossword').forEach((nodeEl) => {
+      const hs = state.hotspots.find((item) => item.id === nodeEl.dataset.id);
+      if (!hs) return;
+      const fontSize = getCrosswordFontSizePx(hs, overlayEl);
+      nodeEl.querySelectorAll('.cw-cell').forEach((cellEl) => {
+        cellEl.style.fontSize = `${fontSize}px`;
+      });
+    });
   });
 }
 
-function focusInspectorCwCell(hsId, row, col) {
-  state.activeCwCell = { id: hsId, row, col };
-  const input = el.cwInspectorGrid.querySelector(`.cw-inspector-cell[data-row="${row}"][data-col="${col}"]`);
-  if (input) {
-    input.focus();
-    input.select();
-  }
-  const hs = state.hotspots.find((item) => item.id === hsId);
-  if (hs) syncCrosswordPageCellsDom(hs);
-}
-
-function renderInspectorCrosswordGrid(hs) {
-  const { rows, cols, cells } = getCrosswordGridData(hs);
-  el.cwInspectorGrid.innerHTML = '';
-  el.cwInspectorGrid.style.setProperty('--cw-cols', String(cols));
-
-  const moveFocusByDelta = (r, c, dr, dc) => {
-    const nr = r + dr;
-    const nc = c + dc;
-    if (nr >= 0 && nr < rows && nc >= 0 && nc < cols) {
-      focusInspectorCwCell(hs.id, nr, nc);
-    }
-  };
-
-  const advanceAfterEntry = (r, c) => {
-    const dir = el.propCwInputDir ? el.propCwInputDir.value : 'horizontal';
-    if (dir === 'horizontal') {
-      if (c + 1 < cols) focusInspectorCwCell(hs.id, r, c + 1);
-      else if (r + 1 < rows) focusInspectorCwCell(hs.id, r + 1, 0);
-    } else if (dir === 'vertical') {
-      if (r + 1 < rows) focusInspectorCwCell(hs.id, r + 1, c);
-      else if (c + 1 < cols) focusInspectorCwCell(hs.id, 0, c + 1);
-    }
-  };
-
-  for (let r = 0; r < rows; r += 1) {
-    for (let c = 0; c < cols; c += 1) {
-      const idx = r * cols + c;
-      const input = document.createElement('input');
-      input.type = 'text';
-      input.className = 'cw-inspector-cell';
-      input.dataset.row = String(r);
-      input.dataset.col = String(c);
-      input.value = cells[idx] || '';
-      if (input.value) input.classList.add('is-filled');
-      input.setAttribute('aria-label', `${r + 1}행 ${c + 1}열`);
-
-      let composing = false;
-
-      const commitCellValue = (rawVal, shouldAdvance) => {
-        const chars = Array.from(String(rawVal || '').trim());
-        const ch = chars.length > 0 ? chars[chars.length - 1] : '';
-        input.value = ch;
-        input.classList.toggle('is-filled', Boolean(ch));
-        hs.cwCells[idx] = ch;
-        persistState();
-        syncCrosswordPageCellsDom(hs);
-        if (shouldAdvance && ch) {
-          advanceAfterEntry(r, c);
-        }
-      };
-
-      input.addEventListener('focus', () => {
-        state.activeCwCell = { id: hs.id, row: r, col: c };
-        syncCrosswordPageCellsDom(hs);
-      });
-
-      input.addEventListener('compositionstart', () => {
-        composing = true;
-      });
-
-      input.addEventListener('compositionend', () => {
-        composing = false;
-        commitCellValue(input.value, true);
-      });
-
-      input.addEventListener('input', () => {
-        if (composing) {
-          // Live mirror during IME composition without breaking jamo assembly
-          const trimmed = input.value.trim();
-          const last = Array.from(trimmed).slice(-1)[0] || '';
-          hs.cwCells[idx] = last;
-          input.classList.toggle('is-filled', Boolean(last));
-          syncCrosswordPageCellsDom(hs);
-          return;
-        }
-        commitCellValue(input.value, Boolean(input.value.trim()));
-      });
-
-      input.addEventListener('keydown', (e) => {
-        if (e.isComposing) return;
-        if (e.key === 'ArrowRight') {
-          e.preventDefault();
-          moveFocusByDelta(r, c, 0, 1);
-        } else if (e.key === 'ArrowLeft') {
-          e.preventDefault();
-          moveFocusByDelta(r, c, 0, -1);
-        } else if (e.key === 'ArrowDown') {
-          e.preventDefault();
-          moveFocusByDelta(r, c, 1, 0);
-        } else if (e.key === 'ArrowUp') {
-          e.preventDefault();
-          moveFocusByDelta(r, c, -1, 0);
-        } else if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          advanceAfterEntry(r, c);
-        } else if (e.key === 'Backspace' && !input.value) {
-          e.preventDefault();
-          const dir = el.propCwInputDir ? el.propCwInputDir.value : 'horizontal';
-          if (dir === 'vertical') moveFocusByDelta(r, c, -1, 0);
-          else moveFocusByDelta(r, c, 0, -1);
-        }
-      });
-
-      el.cwInspectorGrid.appendChild(input);
-    }
-  }
-}
-
-function buildCrosswordBox(hs, isEditorPreview) {
-  const { rows, cols, cells, revealMode } = getCrosswordGridData(hs);
+function buildCrosswordBox(hs, isEditorPreview, overlayEl) {
+  const dir = hs.direction === 'vertical' ? 'vertical' : 'horizontal';
   const grid = document.createElement('div');
-  grid.className = `cw-grid ${isEditorPreview ? 'is-editor-preview' : 'is-viewer-mode'}`;
-  grid.style.setProperty('--cw-cols', String(cols));
-  grid.style.setProperty('--cw-rows', String(rows));
+  grid.className = `cw-grid cw-grid--${dir} ${isEditorPreview ? 'is-editor-preview' : 'is-revealed'}`;
   grid.title = isEditorPreview
-    ? '드래그해 퍼즐 왼쪽 위에 맞춘 뒤, 모서리 ↘ 핸들로 가로·세로 칸에 맞추세요. 칸을 클릭하면 바로 글자를 입력할 수 있습니다.'
-    : '';
+    ? '드래그로 이동, 모서리 ↘ 핸들로 퍼즐 칸 크기에 맞추세요 (왼쪽 위 고정)'
+    : '누르면 ? 버튼으로 돌아갑니다';
 
+  const chars = Array.from((hs.answer || '').trim());
+  const displayChars = chars.length > 0 ? chars : (isEditorPreview ? ['?', '?', '?'] : ['(미입력)']);
   const textColor = hs.textColor || '#dc2626';
+  const fontSize = getCrosswordFontSizePx(hs, overlayEl);
 
-  for (let r = 0; r < rows; r += 1) {
-    for (let c = 0; c < cols; c += 1) {
-      const idx = r * cols + c;
-      const answerChar = cells[idx] || '';
-      const cell = document.createElement('div');
-      cell.className = 'cw-cell';
-      cell.style.color = textColor;
-
-      if (isEditorPreview) {
-        cell.textContent = answerChar;
-        if (answerChar) cell.classList.add('is-has-answer');
-        if (
-          state.activeCwCell &&
-          state.activeCwCell.id === hs.id &&
-          state.activeCwCell.row === r &&
-          state.activeCwCell.col === c
-        ) {
-          cell.classList.add('is-active-cell');
-        }
-        cell.addEventListener('click', (e) => {
-          if (state.mode !== 'editor') return;
-          if (state.suppressNextStageClick) return;
-          e.stopPropagation();
-          selectHotspot(hs.id);
-          focusInspectorCwCell(hs.id, r, c);
-        });
-      } else {
-        if (!answerChar) {
-          cell.classList.add('is-blank');
-        } else {
-          const shown = revealMode === 'all' ? state.revealedAnswers.has(hs.id) : isCrosswordCellRevealed(hs, r, c);
-          cell.classList.add('is-has-answer', shown ? 'is-viewer-shown' : 'is-viewer-hidden');
-          cell.textContent = shown ? answerChar : '';
-          cell.title = shown ? '누르면 다시 가려집니다' : '누르면 이 칸의 정답 글자가 나타납니다';
-          cell.addEventListener('click', (e) => {
-            e.stopPropagation();
-            if (state.suppressNextStageClick) return;
-            if (revealMode === 'all') {
-              toggleAnswerHotspotInPlace(hs);
-            } else {
-              toggleCrosswordCellInPlace(hs, r, c);
-            }
-          });
-        }
-      }
-
-      grid.appendChild(cell);
-    }
+  for (const ch of displayChars) {
+    const cell = document.createElement('div');
+    cell.className = 'cw-cell';
+    cell.style.color = textColor;
+    cell.style.fontSize = `${fontSize}px`;
+    cell.textContent = ch;
+    grid.appendChild(cell);
   }
 
   if (isEditorPreview) {
+    const badge = document.createElement('span');
+    badge.className = 'answer-box-anchor-badge';
+    badge.textContent = '?';
+    grid.appendChild(badge);
+
     const handle = document.createElement('div');
     handle.className = 'resize-handle';
-    handle.title = '드래그하여 퍼즐 판 전체 크기 조절 (왼쪽 위 고정)';
+    handle.title = '드래그하여 칸 크기 조절 (왼쪽 위 고정)';
     handle.textContent = '↘';
     grid.appendChild(handle);
-  } else {
-    const hasAnyAnswer = cells.some(Boolean);
-    if (hasAnyAnswer) {
-      const allShown = areAllCrosswordCellsRevealed(hs);
-      const toggleBtn = document.createElement('button');
-      toggleBtn.type = 'button';
-      toggleBtn.className = `cw-toggle-all-btn ${allShown ? 'is-all-shown' : ''}`;
-      toggleBtn.textContent = allShown ? '모두 가리기' : '정답 전체 보기';
-      toggleBtn.title = allShown ? '퍼즐 정답 모두 숨기기' : '퍼즐 정답 한 번에 모두 보기';
-      toggleBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        if (state.suppressNextStageClick) return;
-        toggleWholeCrosswordInPlace(hs);
-      });
-      grid.appendChild(toggleBtn);
-    }
   }
 
   return grid;
@@ -1368,7 +1064,6 @@ function createHotspotNode(hs, overlayEl, svgEl) {
   node.dataset.id = hs.id;
 
   const answerKind = getEffectiveAnswerKind(hs);
-  const cwGridData = hs.type === 'crossword_answer' ? getCrosswordGridData(hs) : null;
   const isRevealed = state.mode === 'viewer' && (hs.type === 'answer' || hs.type === 'crossword_answer') && state.revealedAnswers.has(hs.id);
 
   if (hs.type === 'jump_area') {
@@ -1378,18 +1073,18 @@ function createHotspotNode(hs, overlayEl, svgEl) {
     const box = buildJumpAreaBox(hs, state.mode === 'editor');
     node.appendChild(box);
     attachHotspotEvents(node, box, hs, overlayEl, svgEl);
-  } else if (
-    hs.type === 'crossword_answer' &&
-    (state.mode === 'editor' || cwGridData.revealMode !== 'all' || isRevealed)
-  ) {
+  } else if (hs.type === 'crossword_answer' && (state.mode === 'editor' || isRevealed)) {
     node.classList.add('is-crossword');
+    node.style.width = `${hs.boxWidth || 24}%`;
+    node.style.height = `${hs.boxHeight || 6.5}%`;
+    const grid = buildCrosswordBox(hs, state.mode === 'editor', overlayEl);
     if (state.mode === 'viewer') {
-      node.classList.add('is-viewer-grid');
-    }
-    node.style.width = `${hs.boxWidth || 56}%`;
-    node.style.height = `${hs.boxHeight || 42}%`;
-    const grid = buildCrosswordBox(hs, state.mode === 'editor');
-    if (state.mode === 'editor') {
+      grid.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (state.suppressNextStageClick) return;
+        toggleAnswerHotspotInPlace(hs);
+      });
+    } else {
       attachHotspotEvents(node, grid, hs, overlayEl, svgEl);
     }
     node.appendChild(grid);
@@ -1553,8 +1248,7 @@ function cloneHotspotAt(source, targetPage, targetX, targetY) {
     id: `hs-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
     page: targetPage,
     x: clampedX,
-    y: clampedY,
-    cwCells: Array.isArray(source.cwCells) ? source.cwCells.slice() : source.cwCells
+    y: clampedY
   };
   if (source.type === 'line_answer') {
     const dx = clampedX - source.x;
@@ -1625,9 +1319,9 @@ function attachHotspotEvents(node, triggerEl, hs, overlayEl, svgEl) {
   let startY = hs.y;
   const isBoxResize = hs.type === 'jump_area' || hs.type === 'crossword_answer';
   let startWidthPct = isBoxResize
-    ? (hs.boxWidth || (hs.type === 'crossword_answer' ? 56 : 38))
+    ? (hs.boxWidth || (hs.type === 'crossword_answer' ? 24 : 38))
     : (hs.answerWidth || 30);
-  let startHeightPct = hs.boxHeight || (hs.type === 'crossword_answer' ? 42 : 6);
+  let startHeightPct = hs.boxHeight || 6.5;
   let startLeftPct = hs.x - startWidthPct / 2;
   let startTopPct = hs.y - startHeightPct / 2;
 
@@ -1643,9 +1337,9 @@ function attachHotspotEvents(node, triggerEl, hs, overlayEl, svgEl) {
       startClientX = e.clientX;
       startClientY = e.clientY;
       startWidthPct = isBoxResize
-        ? (hs.boxWidth || (hs.type === 'crossword_answer' ? 56 : 38))
+        ? (hs.boxWidth || (hs.type === 'crossword_answer' ? 24 : 38))
         : (hs.answerWidth || 30);
-      startHeightPct = hs.boxHeight || (hs.type === 'crossword_answer' ? 42 : 6);
+      startHeightPct = hs.boxHeight || 6.5;
       startLeftPct = hs.x - startWidthPct / 2;
       startTopPct = hs.y - startHeightPct / 2;
 
@@ -1654,23 +1348,26 @@ function attachHotspotEvents(node, triggerEl, hs, overlayEl, svgEl) {
         const overlayRect = overlayEl.getBoundingClientRect();
         if (!overlayRect.width || !overlayRect.height) return;
         if (hs.type === 'crossword_answer') {
-          // Top-left anchored resize so the puzzle grid aligns easily corner-to-corner
+          // Top-left anchored resize so the strip lines up easily with printed puzzle squares
           const deltaRightPct = ((ev.clientX - startClientX) / overlayRect.width) * 100;
           const deltaBottomPct = ((ev.clientY - startClientY) / overlayRect.height) * 100;
-          const maxW = Math.max(8, 99 - startLeftPct);
-          const maxH = Math.max(5, 99 - startTopPct);
-          hs.boxWidth = Number(Math.min(maxW, Math.max(8, startWidthPct + deltaRightPct)).toFixed(1));
-          hs.boxHeight = Number(Math.min(maxH, Math.max(5, startHeightPct + deltaBottomPct)).toFixed(1));
+          const maxW = Math.max(4, 99 - startLeftPct);
+          const maxH = Math.max(2.5, 99 - startTopPct);
+          hs.boxWidth = Number(Math.min(maxW, Math.max(4, startWidthPct + deltaRightPct)).toFixed(1));
+          hs.boxHeight = Number(Math.min(maxH, Math.max(2.5, startHeightPct + deltaBottomPct)).toFixed(1));
           hs.x = Number((startLeftPct + hs.boxWidth / 2).toFixed(1));
           hs.y = Number((startTopPct + hs.boxHeight / 2).toFixed(1));
           node.style.left = `${hs.x}%`;
           node.style.top = `${hs.y}%`;
           node.style.width = `${hs.boxWidth}%`;
           node.style.height = `${hs.boxHeight}%`;
+          const liveFont = getCrosswordFontSizePx(hs, overlayEl);
+          node.querySelectorAll('.cw-cell').forEach((cellEl) => {
+            cellEl.style.fontSize = `${liveFont}px`;
+          });
           moved = true;
           if (state.selectedId === hs.id) {
-            const cw = getCrosswordGridData(hs);
-            el.cwBoxSizeLabel.textContent = `퍼즐 크기: ${cw.cols}×${cw.rows}칸 (${Math.round(hs.boxWidth)}%×${Math.round(hs.boxHeight)}%) · 왼쪽 위 고정 ↘ 드래그`;
+            el.cwBoxSizeLabel.textContent = `크기: 가로 ${Math.round(hs.boxWidth)}% × 세로 ${Math.round(hs.boxHeight)}% (↘ 드래그로 칸 크기에 맞추세요)`;
             el.propCoords.textContent = `위치: 원본 ${hs.page}쪽 · X ${hs.x.toFixed(1)}%, Y ${hs.y.toFixed(1)}%`;
           }
           return;
@@ -2296,6 +1993,7 @@ function updatePageUiScale() {
     scale = Math.min(1.15, Math.max(0.3, scale));
     slot.style.setProperty('--page-ui-scale', scale.toFixed(3));
   });
+  syncCrosswordFontSizes();
 }
 
 async function renderSpread() {
@@ -2515,23 +2213,20 @@ function handleOverlayClick(e, overlayEl) {
                 : isLine
                   ? '선 잇기'
                   : isCrossword
-                    ? '가로세로 낱말 퍼즐'
+                    ? '가로세로 낱말'
                     : '정답 확인',
     targetPage: isToc ? 2 : isJumpArea ? 6 : undefined,
-    boxWidth: isJumpArea ? 38 : isCrossword ? 56 : undefined,
-    boxHeight: isJumpArea ? 6 : isCrossword ? 42 : undefined,
+    boxWidth: isJumpArea ? 38 : isCrossword ? 24 : undefined,
+    boxHeight: isJumpArea ? 6 : isCrossword ? 6.5 : undefined,
     endX: isLine ? Number(Math.min(92, x + 22).toFixed(1)) : undefined,
     endY: isLine ? y : undefined,
     lineColor: isLine ? '#ef4444' : undefined,
     lineWidth: isLine ? 4 : undefined,
-    cwCols: isCrossword ? 5 : undefined,
-    cwRows: isCrossword ? 5 : undefined,
-    cwCells: isCrossword ? Array(25).fill('') : undefined,
-    cwRevealMode: isCrossword ? 'cell' : undefined,
+    direction: isCrossword ? 'horizontal' : undefined,
     textColor: isCrossword ? '#dc2626' : undefined,
     url: isAnswer || isToc || isJumpArea || isLine || isCrossword ? '' : 'https://',
     note: '',
-    answer: tool === 'answer_text' ? '정답' : '',
+    answer: tool === 'answer_text' ? '정답' : isCrossword ? '당진시' : '',
     answerImage: '',
     answerWidth: 30,
     answerStyle: 'inline',
@@ -2553,7 +2248,7 @@ function handleOverlayClick(e, overlayEl) {
           : isLine
             ? '선 잇기가 배치되었습니다. ? 버튼과 동그라미(●) 끝점을 각각 점에 맞추세요.'
             : isCrossword
-              ? '낱말 퍼즐이 배치되었습니다. 칸 수(예: 8×9)를 입력하고 ↘ 모서리로 퍼즐 판에 맞추세요.'
+              ? '가로/세로 낱말이 배치되었습니다. 정답 낱말과 방향(가로/세로)을 고르고 ↘로 칸 크기에 맞추세요.'
               : '버튼이 배치되었습니다. 오른쪽 패널에서 내용을 편집하세요.'
   );
 }
@@ -2889,10 +2584,11 @@ function bindInspectorEvents() {
         delete hs.answerKind;
       } else if (val === 'crossword_answer') {
         hs.type = 'crossword_answer';
-        if (!hs.boxWidth || hs.boxWidth < 25) hs.boxWidth = 56;
-        if (!hs.boxHeight || hs.boxHeight < 10) hs.boxHeight = 42;
+        if (!hs.direction) hs.direction = 'horizontal';
+        if (!hs.boxWidth) hs.boxWidth = 24;
+        if (!hs.boxHeight) hs.boxHeight = 6.5;
         if (!hs.textColor) hs.textColor = '#dc2626';
-        getCrosswordGridData(hs);
+        if (!hs.answer || hs.answer === '정답') hs.answer = '당진시';
         delete hs.answerKind;
       } else {
         hs.type = val;
@@ -2910,7 +2606,25 @@ function bindInspectorEvents() {
   });
   el.propUrl.addEventListener('input', () => updateSelected((hs) => { hs.url = el.propUrl.value; }));
   el.propNote.addEventListener('input', () => updateSelected((hs) => { hs.note = el.propNote.value; }));
-  el.propAnswer.addEventListener('input', () => updateSelected((hs) => { hs.answer = el.propAnswer.value; }));
+  el.propAnswer.addEventListener('input', () =>
+    updateSelected((hs) => {
+      if (hs.type === 'crossword_answer') {
+        const prevLen = Array.from((hs.answer || '').trim()).length;
+        const nextVal = el.propAnswer.value;
+        const nextLen = Array.from(nextVal.trim()).length;
+        if (prevLen >= 1 && nextLen >= 1 && prevLen !== nextLen) {
+          if (hs.direction === 'vertical') {
+            const perCellH = (hs.boxHeight || 20) / prevLen;
+            hs.boxHeight = Number(Math.min(92, Math.max(4, perCellH * nextLen)).toFixed(1));
+          } else {
+            const perCellW = (hs.boxWidth || 24) / prevLen;
+            hs.boxWidth = Number(Math.min(92, Math.max(5, perCellW * nextLen)).toFixed(1));
+          }
+        }
+      }
+      hs.answer = el.propAnswer.value;
+    })
+  );
   el.propAnswerStyle.addEventListener('change', () => updateSelected((hs) => { hs.answerStyle = el.propAnswerStyle.value; }));
   el.propSize.addEventListener('input', () => updateSelected((hs) => { hs.scale = Number(el.propSize.value); }));
 
@@ -2920,19 +2634,17 @@ function bindInspectorEvents() {
     btn.addEventListener('click', () => updateSelected((hs) => { hs.lineColor = btn.dataset.lineColor; }));
   });
 
-  const applyCwResize = () => {
-    const colsVal = Number(el.propCwCols.value);
-    const rowsVal = Number(el.propCwRows.value);
-    if (!Number.isFinite(colsVal) || !Number.isFinite(rowsVal)) return;
+  el.propCwDirection.addEventListener('change', () => {
+    const nextDir = el.propCwDirection.value === 'vertical' ? 'vertical' : 'horizontal';
     updateSelected((hs) => {
-      resizeCrosswordGrid(hs, rowsVal, colsVal);
-    });
-  };
-  el.propCwCols.addEventListener('change', applyCwResize);
-  el.propCwRows.addEventListener('change', applyCwResize);
-  el.propCwRevealMode.addEventListener('change', () => {
-    updateSelected((hs) => {
-      hs.cwRevealMode = el.propCwRevealMode.value === 'all' ? 'all' : 'cell';
+      if (hs.direction !== nextDir) {
+        const prevW = hs.boxWidth || 24;
+        const prevH = hs.boxHeight || 6.5;
+        const ratio = state.pageAspectRatio || 0.72;
+        hs.boxWidth = Number(Math.max(4, Math.min(90, prevH / ratio)).toFixed(1));
+        hs.boxHeight = Number(Math.max(3, Math.min(90, prevW * ratio)).toFixed(1));
+        hs.direction = nextDir;
+      }
     });
   });
   el.propCwColor.addEventListener('input', () => updateSelected((hs) => { hs.textColor = el.propCwColor.value; }));
@@ -2967,12 +2679,8 @@ function bindInspectorEvents() {
   el.testHotspotBtn.addEventListener('click', () => {
     const hs = state.hotspots.find((item) => item.id === state.selectedId);
     if (!hs) return;
-    if (hs.type === 'answer') {
+    if (hs.type === 'answer' || hs.type === 'crossword_answer') {
       openAnswerModal(hs);
-      return;
-    }
-    if (hs.type === 'crossword_answer') {
-      showToast('관찰자 모드에서 퍼즐 칸을 누르면 한 글자씩 열리고, "정답 전체 보기"로 한 번에 볼 수 있습니다.');
       return;
     }
     if (hs.type === 'line_answer') {
@@ -3191,26 +2899,15 @@ function bindEvents() {
   el.revealAllAnswersBtn.addEventListener('click', () => {
     const { leftPage, rightPage } = getVisiblePages();
     const isAnswerType = (t) => t === 'answer' || t === 'line_answer' || t === 'crossword_answer';
-    const visibleAnswers = state.hotspots.filter(
-      (h) => isAnswerType(h.type) && (h.page === leftPage || h.page === rightPage)
-    );
+    const visibleAnswerIds = state.hotspots
+      .filter((h) => isAnswerType(h.type) && (h.page === leftPage || h.page === rightPage))
+      .map((h) => h.id);
 
-    const allRevealed =
-      visibleAnswers.length > 0 &&
-      visibleAnswers.every((h) =>
-        h.type === 'crossword_answer' ? areAllCrosswordCellsRevealed(h) : state.revealedAnswers.has(h.id)
-      );
-
+    const allRevealed = visibleAnswerIds.length > 0 && visibleAnswerIds.every((id) => state.revealedAnswers.has(id));
     if (allRevealed) {
-      visibleAnswers.forEach((h) => {
-        if (h.type === 'crossword_answer') clearCrosswordReveals(h);
-        else state.revealedAnswers.delete(h.id);
-      });
+      visibleAnswerIds.forEach((id) => state.revealedAnswers.delete(id));
     } else {
-      visibleAnswers.forEach((h) => {
-        if (h.type === 'crossword_answer') clearCrosswordReveals(h);
-        state.revealedAnswers.add(h.id);
-      });
+      visibleAnswerIds.forEach((id) => state.revealedAnswers.add(id));
     }
     renderHotspots();
   });

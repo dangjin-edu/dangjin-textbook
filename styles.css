@@ -997,57 +997,58 @@ body {
   outline-offset: 2px;
 }
 
-/* Crossword Puzzle Grid */
+/* Crossword Word Strip (Horizontal Nx1 / Vertical 1xN, Transparent Revealed Text) */
 .hotspot-node.is-crossword {
   transform: translate(-50%, -50%);
-}
-
-.hotspot-node.is-crossword.is-viewer-grid {
-  pointer-events: none;
 }
 
 .cw-grid {
   position: relative;
   width: 100%;
   height: 100%;
-  display: grid;
-  grid-template-columns: repeat(var(--cw-cols, 5), minmax(0, 1fr));
-  grid-template-rows: repeat(var(--cw-rows, 5), minmax(0, 1fr));
+  display: flex;
+  cursor: pointer;
+}
+
+.cw-grid--horizontal {
+  flex-direction: row;
+}
+
+.cw-grid--vertical {
+  flex-direction: column;
 }
 
 .cw-cell {
+  flex: 1 1 0;
   min-width: 0;
   min-height: 0;
-  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 16px;
-  font-size: 60cqmin;
   font-weight: 800;
   line-height: 1;
-  container-type: size;
   user-select: none;
+  overflow: hidden;
 }
 
 .cw-grid.is-editor-preview {
-  background: rgba(20, 184, 166, 0.06);
+  background: rgba(20, 184, 166, 0.1);
   border: 2px dashed #0f766e;
-  border-radius: 4px;
+  border-radius: 5px;
   cursor: grab;
 }
 
-.cw-grid.is-editor-preview .cw-cell {
-  box-shadow: inset -1px -1px 0 rgba(15, 118, 110, 0.38);
+.cw-grid--horizontal.is-editor-preview .cw-cell {
+  border-right: 1px dashed rgba(15, 118, 110, 0.45);
 }
 
-.cw-grid.is-editor-preview .cw-cell.is-has-answer {
-  background: rgba(255, 255, 255, 0.72);
+.cw-grid--vertical.is-editor-preview .cw-cell {
+  border-bottom: 1px dashed rgba(15, 118, 110, 0.45);
 }
 
-.cw-grid.is-editor-preview .cw-cell.is-active-cell {
-  background: rgba(219, 234, 254, 0.85);
-  box-shadow: inset 0 0 0 2px #2563eb;
+.cw-grid.is-editor-preview .cw-cell:last-of-type {
+  border-right: 0;
+  border-bottom: 0;
 }
 
 .hotspot-node.is-selected .cw-grid.is-editor-preview {
@@ -1056,132 +1057,30 @@ body {
   box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.22);
 }
 
-.cw-cell.is-blank {
-  pointer-events: none;
+.cw-grid.is-revealed {
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  transition: background 0.12s ease;
 }
 
-.cw-cell.is-has-answer.is-viewer-hidden {
-  pointer-events: auto;
-  cursor: pointer;
-  transition: background 0.12s ease, box-shadow 0.12s ease;
+.cw-grid.is-revealed:hover {
+  background: rgba(255, 255, 255, 0.22);
 }
 
-.cw-cell.is-has-answer.is-viewer-hidden::after {
-  content: '';
-  position: absolute;
-  right: 3px;
-  bottom: 3px;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: rgba(234, 88, 12, 0.55);
-  pointer-events: none;
+.cw-grid.is-revealed .cw-cell {
+  background: transparent;
+  text-shadow: 0 0 3px rgba(255, 255, 255, 0.92), 0 0 6px rgba(255, 255, 255, 0.8);
 }
 
-.cw-cell.is-has-answer.is-viewer-hidden:hover {
-  background: rgba(249, 115, 22, 0.14);
-  box-shadow: inset 0 0 0 1.5px rgba(234, 88, 12, 0.55);
-}
-
-.cw-cell.is-has-answer.is-viewer-shown {
-  pointer-events: auto;
-  cursor: pointer;
-  background: rgba(255, 255, 255, 0.86);
-  box-shadow: inset 0 0 0 1px rgba(220, 38, 38, 0.28);
-}
-
-.cw-cell.is-has-answer.is-viewer-shown:hover {
-  background: rgba(254, 243, 199, 0.9);
-}
-
-.cw-toggle-all-btn {
-  position: absolute;
-  top: -26px;
-  right: 0;
-  transform-origin: bottom right;
-  transform: scale(var(--page-ui-scale, 1));
-  pointer-events: auto;
-  border: 1.5px solid #ea580c;
-  background: #fff7ed;
-  color: #c2410c;
-  font-family: inherit;
-  font-size: 11px;
-  font-weight: 800;
-  padding: 2px 9px;
-  border-radius: 999px;
-  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.16);
-  cursor: pointer;
-  white-space: nowrap;
-  z-index: 6;
-}
-
-.cw-toggle-all-btn:hover {
-  background: #ffedd5;
-}
-
-.cw-toggle-all-btn.is-all-shown {
-  background: #dc2626;
-  border-color: #b91c1c;
-  color: #ffffff;
-}
-
-/* Inspector Crossword Grid */
-.cw-dims-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-
-.cw-input-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-}
-
-.cw-input-header select {
-  padding: 2px 6px;
-  font-size: 11px;
-  border-radius: 5px;
-}
-
-.cw-inspector-grid {
-  display: grid;
-  grid-template-columns: repeat(var(--cw-cols, 5), minmax(0, 1fr));
-  gap: 3px;
-  padding: 6px;
-  background: #ffffff;
-  border: 1px solid #cbd5e1;
-  border-radius: 8px;
-}
-
-.cw-inspector-cell {
-  width: 100%;
-  min-width: 0;
-  aspect-ratio: 1 / 1;
-  padding: 0;
-  border: 1px solid #cbd5e1;
-  border-radius: 4px;
-  background: #f1f5f9;
-  color: #0f172a;
-  font-family: inherit;
-  font-size: 13px;
-  font-weight: 800;
-  text-align: center;
-  outline: none;
-  transition: border-color 0.1s ease, background 0.1s ease;
-}
-
-.cw-inspector-cell.is-filled {
-  background: #fffbeb;
-  border-color: #f59e0b;
-  color: #b91c1c;
-}
-
-.cw-inspector-cell:focus {
-  border-color: #2563eb;
-  background: #eff6ff;
-  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.18);
+.cw-shape-badge {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #0f766e;
+  background: #f0fdfa;
+  border: 1px solid #99f6e4;
+  border-radius: 6px;
+  padding: 5px 8px;
 }
 
 /* Inspector Swatches & Subgroups */
