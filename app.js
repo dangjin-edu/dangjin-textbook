@@ -1908,12 +1908,12 @@ function updatePageUiScale() {
     if (!slot || slot.classList.contains('is-empty')) return;
     const width = slot.offsetWidth;
     if (!width) return;
-    // Base desktop slot width is 460px; scale buttons & pills proportionally on narrower viewports
+    // Base desktop slot width is 460px; scale proportionally and keep compact on mobile so pills never cover arrows
     let scale = width / 460;
     if (isMobile) {
-      scale *= 0.88;
+      scale *= 0.76;
     }
-    scale = Math.min(1.15, Math.max(0.32, scale));
+    scale = Math.min(1.15, Math.max(0.3, scale));
     slot.style.setProperty('--page-ui-scale', scale.toFixed(3));
   });
 }
@@ -1929,6 +1929,7 @@ async function renderSpread() {
   updatePageUiScale();
   renderHotspots();
   prefetchAdjacentSpreads();
+  requestAnimationFrame(updatePageUiScale);
 }
 
 function goToIndex(idx) {
