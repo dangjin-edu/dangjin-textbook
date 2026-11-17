@@ -1902,13 +1902,31 @@ function prefetchAdjacentSpreads() {
   }, 50);
 }
 
+function updatePageUiScale() {
+  const isMobile = window.innerWidth <= 640;
+  [el.leftPageSlot, el.rightPageSlot].forEach((slot) => {
+    if (!slot || slot.classList.contains('is-empty')) return;
+    const width = slot.offsetWidth;
+    if (!width) return;
+    // Base desktop slot width is 460px; scale buttons & pills proportionally on narrower viewports
+    let scale = width / 460;
+    if (isMobile) {
+      scale *= 0.88;
+    }
+    scale = Math.min(1.15, Math.max(0.32, scale));
+    slot.style.setProperty('--page-ui-scale', scale.toFixed(3));
+  });
+}
+
 async function renderSpread() {
   const { leftPage, rightPage, leftIndex, rightIndex } = getVisiblePages();
   updatePagerUi();
+  updatePageUiScale();
   await Promise.all([
     renderSlot('left', leftPage, leftIndex + 1),
     renderSlot('right', rightPage, rightIndex + 1)
   ]);
+  updatePageUiScale();
   renderHotspots();
   prefetchAdjacentSpreads();
 }
@@ -2910,6 +2928,13 @@ function bindEvents() {
 
   setupStagePanning();
   bindInspectorEvents();
+
+  if (typeof ResizeObserver === 'function') {
+    const slotResizeObserver = new ResizeObserver(() => updatePageUiScale());
+    slotResizeObserver.observe(el.leftPageSlot);
+    slotResizeObserver.observe(el.rightPageSlot);
+  }
+  window.addEventListener('resize', updatePageUiScale);
 }
 
 async function init() {

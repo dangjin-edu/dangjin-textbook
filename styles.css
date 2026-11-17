@@ -824,7 +824,7 @@ body {
 
 .hotspot-node {
   position: absolute;
-  transform: translate(-50%, -50%) scale(var(--hs-scale, 1));
+  transform: translate(-50%, -50%) scale(calc(var(--hs-scale, 1) * var(--page-ui-scale, 1)));
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -976,7 +976,7 @@ body {
   position: absolute;
   width: 20px;
   height: 20px;
-  transform: translate(-50%, -50%);
+  transform: translate(-50%, -50%) scale(var(--page-ui-scale, 1));
   border-radius: 50%;
   border: 2.5px solid #ffffff;
   background: #ef4444;
@@ -1179,8 +1179,8 @@ body {
 }
 
 .answer-image-caption {
-  padding: 3px 8px;
-  font-size: 11px;
+  padding: calc(3px * var(--page-ui-scale, 1)) calc(8px * var(--page-ui-scale, 1));
+  font-size: calc(11px * var(--page-ui-scale, 1));
   font-weight: 700;
   color: #991b1b;
   background: #fffbeb;
@@ -1902,14 +1902,30 @@ body {
     padding: 8px;
   }
   .side-nav-btn {
-    width: 32px;
-    height: 52px;
+    width: 26px;
+    height: 42px;
+    background: rgba(255, 255, 255, 0.72);
   }
   .side-nav-btn--prev {
     left: 4px;
   }
   .side-nav-btn--next {
     right: 4px;
+  }
+  .bookmark-ribbon {
+    width: 10px;
+    height: 18px;
+  }
+  .bookmark-ribbon--left {
+    left: 14px;
+  }
+  .bookmark-ribbon--right {
+    right: 14px;
+  }
+  .page-num-badge {
+    bottom: 4px;
+    font-size: 9.5px;
+    padding: 1px 6px;
   }
   .book-spread {
     padding: 5px;
