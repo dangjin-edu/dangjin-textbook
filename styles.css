@@ -669,12 +669,12 @@ body {
 
 .book-zoom-wrap {
   transform-origin: center center;
-  will-change: transform;
   transition: transform 0.12s ease-out;
 }
 
 .book-zoom-wrap.is-panning {
   transition: none;
+  will-change: transform;
 }
 
 .book-spread {
