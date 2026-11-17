@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=20261117f" />
+  <link rel="stylesheet" href="styles.css?v=20261117g" />
   <!-- PDF.js (CDN) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 </head>
@@ -347,6 +347,24 @@
               </select>
             </div>
             <div class="cw-shape-badge" id="cwGridShapeBadge">현재 형태: 3 × 1 (가로 3칸)</div>
+            <div class="cw-cell-size-box">
+              <div class="cw-cell-size-header">
+                <span>칸 별 크기 조절 (1칸 기준)</span>
+                <button id="squareCwCellBtn" class="link-btn" type="button" title="가로·세로 비율을 정사각형 1:1로 맞춥니다">정사각형 맞춤</button>
+              </div>
+              <div class="cw-cell-size-row">
+                <label for="propCwCellW">가로</label>
+                <input id="propCwCellWRng" type="range" min="2.5" max="20" step="0.2" value="8" />
+                <input id="propCwCellW" class="cw-cell-size-num" type="number" min="2" max="40" step="0.2" value="8" />
+                <span class="cw-cell-unit">%</span>
+              </div>
+              <div class="cw-cell-size-row">
+                <label for="propCwCellH">세로</label>
+                <input id="propCwCellHRng" type="range" min="2" max="18" step="0.2" value="6.5" />
+                <input id="propCwCellH" class="cw-cell-size-num" type="number" min="1.5" max="40" step="0.2" value="6.5" />
+                <span class="cw-cell-unit">%</span>
+              </div>
+            </div>
             <div class="form-field">
               <label for="propCwColor">글자 색상</label>
               <div class="color-row">
@@ -458,6 +476,6 @@
 
   <script src="firebase-config.js"></script>
   <script src="sample-data.js"></script>
-  <script type="module" src="app.js?v=20261117f"></script>
+  <script type="module" src="app.js?v=20261117g"></script>
 </body>
 </html>

@@ -1083,6 +1083,58 @@ body {
   padding: 5px 8px;
 }
 
+.cw-cell-size-box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+}
+
+.cw-cell-size-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #334155;
+}
+
+.cw-cell-size-row {
+  display: grid;
+  grid-template-columns: 30px 1fr 54px 14px;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: #475569;
+}
+
+.cw-cell-size-row label {
+  font-weight: 700;
+  font-size: 11.5px;
+  color: #475569;
+}
+
+.cw-cell-size-row input[type="range"] {
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+}
+
+.cw-cell-size-num {
+  width: 100%;
+  padding: 3px 5px !important;
+  font-size: 12px !important;
+  text-align: right;
+}
+
+.cw-cell-unit {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
 /* Inspector Swatches & Subgroups */
 .sub-settings-group {
   display: flex;
@@ -1237,10 +1289,10 @@ body {
 
 .resize-handle {
   position: absolute;
-  right: -8px;
-  bottom: -8px;
-  width: 20px;
-  height: 20px;
+  right: -10px;
+  bottom: -10px;
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
   background: #2563eb;
   color: #fff;
@@ -1253,7 +1305,8 @@ body {
   cursor: nwse-resize;
   box-shadow: 0 2px 8px rgba(15, 23, 42, 0.3);
   touch-action: none;
-  z-index: 4;
+  pointer-events: auto;
+  z-index: 12;
 }
 
 .image-upload-row {

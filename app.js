@@ -159,6 +159,11 @@ const el = {
   crosswordSettingsGroup: document.getElementById('crosswordSettingsGroup'),
   propCwDirection: document.getElementById('propCwDirection'),
   cwGridShapeBadge: document.getElementById('cwGridShapeBadge'),
+  propCwCellWRng: document.getElementById('propCwCellWRng'),
+  propCwCellW: document.getElementById('propCwCellW'),
+  propCwCellHRng: document.getElementById('propCwCellHRng'),
+  propCwCellH: document.getElementById('propCwCellH'),
+  squareCwCellBtn: document.getElementById('squareCwCellBtn'),
   propCwColor: document.getElementById('propCwColor'),
   cwBoxSizeLabel: document.getElementById('cwBoxSizeLabel'),
   testHotspotBtn: document.getElementById('testHotspotBtn'),
@@ -454,7 +459,7 @@ function syncInspectorForm(hs) {
     el.propCwDirection.value = hs.direction === 'vertical' ? 'vertical' : 'horizontal';
     el.propCwColor.value = hs.textColor || '#dc2626';
     el.cwGridShapeBadge.textContent = getCrosswordShapeLabel(hs);
-    el.cwBoxSizeLabel.textContent = `크기: 가로 ${Math.round(hs.boxWidth || 24)}% × 세로 ${Math.round(hs.boxHeight || 6.5)}% (↘ 드래그로 칸 크기에 맞추세요)`;
+    syncCrosswordCellSizeInputs(hs);
   }
 
   const hasImage = Boolean(hs.answerImage);
@@ -550,6 +555,40 @@ function getCrosswordShapeLabel(hs) {
     : `현재 형태: ${count} × 1 (가로 ${count}칸)`;
 }
 
+function getCrosswordCellMetrics(hs) {
+  const count = Math.max(1, Array.from((hs.answer || '').trim()).length);
+  const isVert = hs.direction === 'vertical';
+  const boxW = hs.boxWidth || (isVert ? 6.5 : 24);
+  const boxH = hs.boxHeight || (isVert ? 24 : 6.5);
+  const cellW = isVert ? boxW : boxW / count;
+  const cellH = isVert ? boxH / count : boxH;
+  return { count, isVert, boxW, boxH, cellW, cellH };
+}
+
+function syncCrosswordCellSizeInputs(hs) {
+  const { cellW, cellH, boxW, boxH } = getCrosswordCellMetrics(hs);
+  const cwRounded = Number(cellW.toFixed(1));
+  const chRounded = Number(cellH.toFixed(1));
+  el.propCwCellW.value = String(cwRounded);
+  el.propCwCellWRng.value = String(Math.min(20, Math.max(2.5, cwRounded)));
+  el.propCwCellH.value = String(chRounded);
+  el.propCwCellHRng.value = String(Math.min(18, Math.max(2, chRounded)));
+  el.cwBoxSizeLabel.textContent = `1칸: ${cwRounded}%×${chRounded}% · 전체: ${boxW.toFixed(1)}%×${boxH.toFixed(1)}% (↘ 드래그 가능)`;
+}
+
+function applyCrosswordCellSize(hs, nextCellW, nextCellH) {
+  const { count, isVert } = getCrosswordCellMetrics(hs);
+  const safeCellW = Math.min(40, Math.max(1.8, nextCellW));
+  const safeCellH = Math.min(40, Math.max(1.5, nextCellH));
+  if (isVert) {
+    hs.boxWidth = Number(Math.min(95, Math.max(2.5, safeCellW)).toFixed(1));
+    hs.boxHeight = Number(Math.min(95, Math.max(2.5, safeCellH * count)).toFixed(1));
+  } else {
+    hs.boxWidth = Number(Math.min(95, Math.max(2.5, safeCellW * count)).toFixed(1));
+    hs.boxHeight = Number(Math.min(95, Math.max(2, safeCellH)).toFixed(1));
+  }
+}
+
 function getCrosswordFontSizePx(hs, overlayEl) {
   const chars = Array.from((hs.answer || '').trim());
   const count = Math.max(1, chars.length);
@@ -562,7 +601,7 @@ function getCrosswordFontSizePx(hs, overlayEl) {
   const boxH = slotHeight * ((hs.boxHeight || (dir === 'vertical' ? 24 : 6.5)) / 100);
   const cellW = dir === 'horizontal' ? boxW / count : boxW;
   const cellH = dir === 'vertical' ? boxH / count : boxH;
-  return Math.max(10, Math.min(72, Math.floor(Math.min(cellW, cellH) * 0.64)));
+  return Math.max(8, Math.min(96, Math.floor(Math.min(cellW, cellH) * 0.66)));
 }
 
 function syncCrosswordFontSizes() {
@@ -1331,6 +1370,11 @@ function attachHotspotEvents(node, triggerEl, hs, overlayEl, svgEl) {
       if (state.mode !== 'editor') return;
       e.stopPropagation();
       e.preventDefault();
+      try {
+        resizeHandle.setPointerCapture(e.pointerId);
+      } catch {
+        // Ignore if pointer capture is unsupported
+      }
       selectHotspot(hs.id);
       resizing = true;
       moved = false;
@@ -1351,10 +1395,10 @@ function attachHotspotEvents(node, triggerEl, hs, overlayEl, svgEl) {
           // Top-left anchored resize so the strip lines up easily with printed puzzle squares
           const deltaRightPct = ((ev.clientX - startClientX) / overlayRect.width) * 100;
           const deltaBottomPct = ((ev.clientY - startClientY) / overlayRect.height) * 100;
-          const maxW = Math.max(4, 99 - startLeftPct);
-          const maxH = Math.max(2.5, 99 - startTopPct);
-          hs.boxWidth = Number(Math.min(maxW, Math.max(4, startWidthPct + deltaRightPct)).toFixed(1));
-          hs.boxHeight = Number(Math.min(maxH, Math.max(2.5, startHeightPct + deltaBottomPct)).toFixed(1));
+          const maxW = Math.max(2.5, 99 - startLeftPct);
+          const maxH = Math.max(2, 99 - startTopPct);
+          hs.boxWidth = Number(Math.min(maxW, Math.max(2.5, startWidthPct + deltaRightPct)).toFixed(1));
+          hs.boxHeight = Number(Math.min(maxH, Math.max(2, startHeightPct + deltaBottomPct)).toFixed(1));
           hs.x = Number((startLeftPct + hs.boxWidth / 2).toFixed(1));
           hs.y = Number((startTopPct + hs.boxHeight / 2).toFixed(1));
           node.style.left = `${hs.x}%`;
@@ -1367,7 +1411,7 @@ function attachHotspotEvents(node, triggerEl, hs, overlayEl, svgEl) {
           });
           moved = true;
           if (state.selectedId === hs.id) {
-            el.cwBoxSizeLabel.textContent = `크기: 가로 ${Math.round(hs.boxWidth)}% × 세로 ${Math.round(hs.boxHeight)}% (↘ 드래그로 칸 크기에 맞추세요)`;
+            syncCrosswordCellSizeInputs(hs);
             el.propCoords.textContent = `위치: 원본 ${hs.page}쪽 · X ${hs.x.toFixed(1)}%, Y ${hs.y.toFixed(1)}%`;
           }
           return;
@@ -2650,6 +2694,32 @@ function bindInspectorEvents() {
   el.propCwColor.addEventListener('input', () => updateSelected((hs) => { hs.textColor = el.propCwColor.value; }));
   document.querySelectorAll('[data-cw-color]').forEach((btn) => {
     btn.addEventListener('click', () => updateSelected((hs) => { hs.textColor = btn.dataset.cwColor; }));
+  });
+
+  const bindCwCellSizeControl = (inputEl, axis) => {
+    inputEl.addEventListener('input', () => {
+      const val = Number(inputEl.value);
+      if (!Number.isFinite(val) || val <= 0) return;
+      updateSelected((hs) => {
+        const { cellW, cellH } = getCrosswordCellMetrics(hs);
+        if (axis === 'w') applyCrosswordCellSize(hs, val, cellH);
+        else applyCrosswordCellSize(hs, cellW, val);
+      });
+    });
+  };
+  bindCwCellSizeControl(el.propCwCellWRng, 'w');
+  bindCwCellSizeControl(el.propCwCellW, 'w');
+  bindCwCellSizeControl(el.propCwCellHRng, 'h');
+  bindCwCellSizeControl(el.propCwCellH, 'h');
+
+  el.squareCwCellBtn.addEventListener('click', () => {
+    updateSelected((hs) => {
+      const { cellW } = getCrosswordCellMetrics(hs);
+      const ratio = state.pageAspectRatio || 1 / 1.32;
+      const squareH = cellW * ratio;
+      applyCrosswordCellSize(hs, cellW, squareH);
+    });
+    showToast('각 칸을 정사각형 비율(1:1)로 맞췄습니다.');
   });
 
   el.propAnswerImageInput.addEventListener('change', async (e) => {
