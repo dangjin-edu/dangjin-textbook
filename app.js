@@ -25,8 +25,10 @@ const state = {
   suppressNextStageClick: false,
   currentIndex: 0, // 0-based index into state.activePages
   totalRawPages: window.TEXTBOOK_SAMPLE.totalPages,
-  activePages: Array.from({ length: window.TEXTBOOK_SAMPLE.totalPages }, (_, i) => i + 1),
-  bookTitle: window.TEXTBOOK_SAMPLE.title,
+  activePages: [1, 2],
+  bookTitle: BOOK_ID === 'dangjin-2027' ? '2027 우리 고장 당진' : '2026 우리 고장 당진',
+  isLoadingBook: true,
+  allowSampleFallback: false,
   pdfUrl: '',
   pdfDoc: null,
   pageAspectRatio: 1 / 1.32,
@@ -215,14 +217,14 @@ function loadSavedState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) {
-      state.hotspots = cloneSampleHotspots();
+      state.hotspots = [];
       return;
     }
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed.hotspots)) {
       state.hotspots = parsed.hotspots;
     } else {
-      state.hotspots = cloneSampleHotspots();
+      state.hotspots = [];
     }
     if (typeof parsed.bookTitle === 'string' && parsed.bookTitle.trim()) {
       state.bookTitle = parsed.bookTitle;
@@ -240,7 +242,7 @@ function loadSavedState() {
       }
     }
   } catch {
-    state.hotspots = cloneSampleHotspots();
+    state.hotspots = [];
   }
 }
 
@@ -1768,7 +1770,16 @@ async function renderSlot(side, pdfPageNum, displayNum) {
   if (!state.pdfDoc) {
     canvas.width = 0;
     canvas.height = 0;
-    sampleLayer.innerHTML = window.TEXTBOOK_SAMPLE.pagesHtml[pdfPageNum] || '';
+    if (state.isLoadingBook) {
+      sampleLayer.innerHTML =
+        side === 'left'
+          ? '<div class="book-loading-state"><div class="book-loading-spinner"></div><p>교과서를 불러오는 중입니다...</p></div>'
+          : '';
+    } else if (state.allowSampleFallback) {
+      sampleLayer.innerHTML = window.TEXTBOOK_SAMPLE.pagesHtml[pdfPageNum] || '';
+    } else {
+      sampleLayer.innerHTML = '';
+    }
     return;
   }
 
@@ -1798,9 +1809,13 @@ function updatePagerUi() {
 
   el.bookSpread.classList.toggle('is-single', state.layout === 'single');
   el.layoutLabel.textContent = state.layout === 'double' ? '양면' : '단면';
-  el.pageIndicator.textContent = rightIndex >= 0
-    ? `${leftIndex + 1} - ${rightIndex + 1} / ${total}`
-    : `${leftIndex + 1} / ${total}`;
+  if (state.isLoadingBook && !state.pdfDoc) {
+    el.pageIndicator.textContent = '불러오는 중...';
+  } else {
+    el.pageIndicator.textContent = rightIndex >= 0
+      ? `${leftIndex + 1} - ${rightIndex + 1} / ${total}`
+      : `${leftIndex + 1} / ${total}`;
+  }
   el.pageJumpTotal.textContent = `/ ${total}`;
   el.pageJumpInput.max = String(total);
 
@@ -2336,6 +2351,8 @@ function readImageAsResizedDataUrl(file) {
 
 async function applyLoadedPdfDoc(doc, titleFallback, preserveActivePages) {
   clearPageRenderCache();
+  state.isLoadingBook = false;
+  state.allowSampleFallback = false;
   state.pdfDoc = doc;
   state.totalRawPages = doc.numPages;
   if (!preserveActivePages || !state.activePages.length) {
@@ -2472,30 +2489,64 @@ async function handleCloudSave() {
 }
 
 async function loadFromCloud() {
+  const defaultPath = './books/dangjin.pdf';
+  const speculativeUrl = state.pdfUrl || defaultPath;
+  const speculativeDocPromise =
+    speculativeUrl && window.pdfjsLib
+      ? window.pdfjsLib.getDocument(speculativeUrl).promise.catch(() => null)
+      : Promise.resolve(null);
+
+  const applyPdfWithSpeculative = async (targetUrl, preserveActivePages) => {
+    if (targetUrl && targetUrl === speculativeUrl) {
+      const specDoc = await speculativeDocPromise;
+      if (specDoc) {
+        await applyLoadedPdfDoc(specDoc, null, preserveActivePages);
+        return true;
+      }
+    }
+    return loadPdfFromUrl(targetUrl, preserveActivePages);
+  };
+
   if (!FirebaseTextbook.isConfigured()) {
     updateCloudUi();
+    const ok = await applyPdfWithSpeculative(defaultPath, false);
+    state.isLoadingBook = false;
+    if (ok) {
+      state.pdfUrl = defaultPath;
+      el.pdfPathInput.value = defaultPath;
+    } else {
+      state.allowSampleFallback = true;
+      state.totalRawPages = window.TEXTBOOK_SAMPLE.totalPages;
+      state.activePages = buildSequentialPages(window.TEXTBOOK_SAMPLE.totalPages);
+      state.hotspots = cloneSampleHotspots();
+      await renderSpread();
+    }
     return;
   }
+
   try {
     const data = await FirebaseTextbook.loadTextbook(state.bookId);
     if (!data) {
       el.cloudStatusBadge.textContent = '클라우드 대기(미저장)';
       el.cloudStatusBadge.classList.add('is-online');
-      const defaultPath = './books/dangjin.pdf';
       const isOnlySample =
         state.hotspots.length === window.TEXTBOOK_SAMPLE.hotspots.length &&
         state.hotspots.every((h, idx) => h.id === window.TEXTBOOK_SAMPLE.hotspots[idx].id);
       if (isOnlySample) {
         state.hotspots = [];
       }
-      const loaded = await loadPdfFromUrl(defaultPath, false);
+      const loaded = await applyPdfWithSpeculative(defaultPath, false);
+      state.isLoadingBook = false;
       if (loaded) {
         state.pdfUrl = defaultPath;
         el.pdfPathInput.value = defaultPath;
-        state.bookTitle = '2026 우리 고장 당진';
+        state.bookTitle = BOOK_ID === 'dangjin-2027' ? '2027 우리 고장 당진' : '2026 우리 고장 당진';
         el.bookTitleInput.value = state.bookTitle;
         persistState();
-      } else if (isOnlySample) {
+      } else {
+        state.allowSampleFallback = true;
+        state.totalRawPages = window.TEXTBOOK_SAMPLE.totalPages;
+        state.activePages = buildSequentialPages(window.TEXTBOOK_SAMPLE.totalPages);
         state.hotspots = cloneSampleHotspots();
         await renderSpread();
       }
@@ -2526,19 +2577,27 @@ async function loadFromCloud() {
     el.cloudStatusBadge.textContent = '클라우드 연동됨';
     el.cloudStatusBadge.classList.add('is-online');
 
-    if (state.pdfUrl) {
-      const ok = await loadPdfFromUrl(state.pdfUrl, true);
-      if (!ok) {
-        showToast(`배포 PDF(${state.pdfUrl})를 아직 찾을 수 없어 현재 화면으로 표시합니다.`);
-        await renderSpread();
-      }
-    } else {
+    const targetPdf = state.pdfUrl || defaultPath;
+    const ok = await applyPdfWithSpeculative(targetPdf, true);
+    state.isLoadingBook = false;
+    if (!ok) {
+      showToast(`배포 PDF(${targetPdf})를 아직 찾을 수 없어 기본 화면으로 표시합니다.`);
+      state.allowSampleFallback = true;
       await renderSpread();
     }
   } catch (err) {
     console.error(err);
     el.cloudStatusBadge.textContent = '연결 오류(로컬)';
     el.cloudStatusBadge.classList.remove('is-online');
+    const ok = await applyPdfWithSpeculative(speculativeUrl, Boolean(state.activePages.length > 2));
+    state.isLoadingBook = false;
+    if (!ok) {
+      state.allowSampleFallback = true;
+      state.totalRawPages = window.TEXTBOOK_SAMPLE.totalPages;
+      state.activePages = buildSequentialPages(window.TEXTBOOK_SAMPLE.totalPages);
+      if (state.hotspots.length === 0) state.hotspots = cloneSampleHotspots();
+      await renderSpread();
+    }
   }
 }
 
@@ -2900,6 +2959,8 @@ function bindEvents() {
   el.resetDemoBtn.addEventListener('click', () => {
     localStorage.removeItem(STORAGE_KEY);
     clearPageRenderCache();
+    state.isLoadingBook = false;
+    state.allowSampleFallback = true;
     state.pdfDoc = null;
     state.pdfUrl = '';
     el.pdfPathInput.value = '';
