@@ -1466,7 +1466,7 @@ function activateHotspot(hs) {
   }
 
   if (hs.type === 'video') {
-    openVideoModal(hs);
+    openVideoInNewTab(hs);
     return;
   }
 
@@ -1477,6 +1477,28 @@ function activateHotspot(hs) {
 
   if (hs.type === 'toc' || hs.type === 'jump_area') {
     goToDisplayPage(hs.targetPage || 1);
+  }
+}
+
+function resolveSafeExternalUrl(rawUrl) {
+  const trimmed = String(rawUrl || '').trim();
+  if (!trimmed || trimmed === 'https://' || trimmed === 'http://') return null;
+  if (/^(javascript|data|vbscript):/i.test(trimmed)) return null;
+  if (/^https?:\/\//i.test(trimmed) || trimmed.startsWith('/') || trimmed.startsWith('./') || trimmed.startsWith('../')) {
+    return trimmed;
+  }
+  return `https://${trimmed}`;
+}
+
+function openVideoInNewTab(hs) {
+  const targetUrl = resolveSafeExternalUrl(hs.url);
+  if (!targetUrl) {
+    showToast('연결된 영상 링크(URL)가 없거나 올바르지 않습니다.');
+    return;
+  }
+  const win = window.open(targetUrl, '_blank', 'noopener,noreferrer');
+  if (!win) {
+    openVideoModal(hs);
   }
 }
 
