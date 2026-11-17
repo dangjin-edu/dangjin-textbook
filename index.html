@@ -110,6 +110,14 @@
       </div>
 
       <div class="editor-toolbar__pdf">
+        <button
+          id="toggleSnapGuidesBtn"
+          class="tool-pill is-selected"
+          type="button"
+          title="버튼 배치·이동 시 파워포인트처럼 정렬선 표시 및 자동 맞춤 (Alt 누른 채 드래그하면 임시 해제)"
+        >
+          🧲 정렬선
+        </button>
         <label for="pdfPathInput" class="editor-toolbar__label">배포 PDF 경로:</label>
         <input
           id="pdfPathInput"
@@ -189,6 +197,7 @@
                   <div id="leftSamplePage" class="sample-page-layer"></div>
                   <svg id="leftLineSvg" class="line-svg-layer" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>
                   <div id="leftOverlay" class="hotspot-overlay" data-side="left"></div>
+                  <svg id="leftGuideSvg" class="align-guide-layer" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"></svg>
                 </div>
                 <button id="deleteLeftPageBtn" class="page-delete-btn" type="button" title="이 페이지 삭제">페이지 삭제</button>
                 <span class="page-num-badge page-num-badge--left" id="leftPageNum">1</span>
@@ -204,6 +213,7 @@
                   <div id="rightSamplePage" class="sample-page-layer"></div>
                   <svg id="rightLineSvg" class="line-svg-layer" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>
                   <div id="rightOverlay" class="hotspot-overlay" data-side="right"></div>
+                  <svg id="rightGuideSvg" class="align-guide-layer" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"></svg>
                 </div>
                 <button id="deleteRightPageBtn" class="page-delete-btn" type="button" title="이 페이지 삭제">페이지 삭제</button>
                 <span class="page-num-badge page-num-badge--right" id="rightPageNum">2</span>
@@ -357,6 +367,11 @@
           </div>
 
           <div class="form-coords" id="propCoords">위치: 1쪽 · X 0%, Y 0%</div>
+
+          <div class="align-quick-row">
+            <button id="alignColBtn" class="btn btn--ghost btn--compact" type="button" title="같은 페이지의 위/아래 버튼 세로선(X)에 딱 맞춤">↕ 세로줄 맞춤</button>
+            <button id="alignRowBtn" class="btn btn--ghost btn--compact" type="button" title="같은 페이지의 왼쪽/오른쪽 버튼 가로선(Y)에 딱 맞춤">↔ 가로줄 맞춤</button>
+          </div>
 
           <div class="inspector-actions">
             <button id="testHotspotBtn" class="btn btn--secondary" type="button">미리보기 테스트</button>

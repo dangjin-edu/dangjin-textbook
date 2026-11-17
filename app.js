@@ -35,6 +35,7 @@ const state = {
   clipboardHotspot: null,
   contextTargetId: null,
   contextEmptyTarget: null,
+  snapGuidesEnabled: true,
   user: null,
   renderTasks: { left: null, right: null }
 };
@@ -57,7 +58,7 @@ const el = {
   pdfPathInput: document.getElementById('pdfPathInput'),
   applyPdfPathBtn: document.getElementById('applyPdfPathBtn'),
   editorHint: document.getElementById('editorHint'),
-  toolPills: Array.from(document.querySelectorAll('.tool-pill')),
+  toolPills: Array.from(document.querySelectorAll('.tool-pill[data-tool]')),
   tocDrawer: document.getElementById('tocDrawer'),
   closeTocDrawerBtn: document.getElementById('closeTocDrawerBtn'),
   tocList: document.getElementById('tocList'),
@@ -89,6 +90,9 @@ const el = {
   rightLineSvg: document.getElementById('rightLineSvg'),
   leftOverlay: document.getElementById('leftOverlay'),
   rightOverlay: document.getElementById('rightOverlay'),
+  leftGuideSvg: document.getElementById('leftGuideSvg'),
+  rightGuideSvg: document.getElementById('rightGuideSvg'),
+  toggleSnapGuidesBtn: document.getElementById('toggleSnapGuidesBtn'),
   leftPageNum: document.getElementById('leftPageNum'),
   rightPageNum: document.getElementById('rightPageNum'),
   deleteLeftPageBtn: document.getElementById('deleteLeftPageBtn'),
@@ -136,6 +140,8 @@ const el = {
   propSize: document.getElementById('propSize'),
   propSizeVal: document.getElementById('propSizeVal'),
   propCoords: document.getElementById('propCoords'),
+  alignColBtn: document.getElementById('alignColBtn'),
+  alignRowBtn: document.getElementById('alignRowBtn'),
   urlFieldGroup: document.getElementById('urlFieldGroup'),
   noteFieldGroup: document.getElementById('noteFieldGroup'),
   answerFieldGroup: document.getElementById('answerFieldGroup'),
@@ -292,6 +298,7 @@ function setMode(mode) {
     resetTocForm();
     selectTool(null);
     selectHotspot(null);
+    clearAllAlignGuides();
   } else {
     el.pdfPathInput.value = state.pdfUrl || '';
     selectHotspot(state.selectedId);
@@ -337,9 +344,13 @@ async function handleEnterEditorClick() {
 function selectTool(tool) {
   state.activeTool = state.activeTool === tool ? null : tool;
   el.toolPills.forEach((pill) => {
+    if (!pill.dataset.tool) return;
     pill.classList.toggle('is-selected', pill.dataset.tool === state.activeTool);
   });
   el.appShell.classList.toggle('is-placing', Boolean(state.activeTool));
+  if (!state.activeTool) {
+    clearAllAlignGuides();
+  }
 
   if (state.activeTool === 'video') {
     el.editorHint.textContent = '페이지에서 영상 버튼을 놓을 위치를 클릭하세요.';
@@ -569,6 +580,273 @@ function createSvgEl(tag, attrs) {
   return node;
 }
 
+let alignFlashTimer = null;
+
+function getGuideSvgForOverlay(overlayEl) {
+  if (overlayEl === el.leftOverlay) return el.leftGuideSvg;
+  if (overlayEl === el.rightOverlay) return el.rightGuideSvg;
+  return null;
+}
+
+function getGuideSvgForPage(pageNum) {
+  const { leftPage, rightPage } = getVisiblePages();
+  if (pageNum === leftPage) return el.leftGuideSvg;
+  if (pageNum === rightPage) return el.rightGuideSvg;
+  return null;
+}
+
+function clearAlignGuides(guideSvg) {
+  if (guideSvg) guideSvg.innerHTML = '';
+}
+
+function clearAllAlignGuides() {
+  if (alignFlashTimer) {
+    clearTimeout(alignFlashTimer);
+    alignFlashTimer = null;
+  }
+  clearAlignGuides(el.leftGuideSvg);
+  clearAlignGuides(el.rightGuideSvg);
+}
+
+function collectSnapAnchors(pageNum, excludeId, includeSelfEndpoint) {
+  const anchors = [];
+  for (const h of state.hotspots) {
+    if (h.page !== pageNum) continue;
+    if (h.id === excludeId) continue;
+    anchors.push({ x: h.x, y: h.y, id: h.id });
+    if (h.type === 'line_answer' && typeof h.endX === 'number' && typeof h.endY === 'number') {
+      anchors.push({ x: h.endX, y: h.endY, id: h.id });
+    }
+  }
+  if (includeSelfEndpoint) {
+    anchors.push({ x: includeSelfEndpoint.x, y: includeSelfEndpoint.y, id: excludeId || 'self' });
+  }
+  return anchors;
+}
+
+function computeSmartSnap(rawX, rawY, pageNum, rect, opts = {}) {
+  const minBound = opts.clampMin ?? 3;
+  const maxBound = opts.clampMax ?? 97;
+  const clampedX = Math.min(maxBound, Math.max(minBound, rawX));
+  const clampedY = Math.min(maxBound, Math.max(minBound, rawY));
+  const roundedX = Number(clampedX.toFixed(1));
+  const roundedY = Number(clampedY.toFixed(1));
+
+  if (!state.snapGuidesEnabled || opts.bypass || !rect || !rect.width || !rect.height) {
+    return { x: roundedX, y: roundedY, guideX: null, guideY: null };
+  }
+
+  const tolX = Math.min(2.4, Math.max(0.55, (7 / rect.width) * 100));
+  const tolY = Math.min(2.2, Math.max(0.45, (7 / rect.height) * 100));
+  const anchors = collectSnapAnchors(pageNum, opts.excludeId, opts.includeSelfEndpoint);
+
+  let bestXDist = Infinity;
+  let snappedXVal = null;
+  for (const a of anchors) {
+    const d = Math.abs(a.x - clampedX);
+    if (d <= tolX && d < bestXDist) {
+      bestXDist = d;
+      snappedXVal = a.x;
+    }
+  }
+  let isCenterX = false;
+  if (snappedXVal === null && Math.abs(50 - clampedX) <= tolX * 0.85) {
+    snappedXVal = 50;
+    isCenterX = true;
+  }
+
+  let bestYDist = Infinity;
+  let snappedYVal = null;
+  for (const a of anchors) {
+    const d = Math.abs(a.y - clampedY);
+    if (d <= tolY && d < bestYDist) {
+      bestYDist = d;
+      snappedYVal = a.y;
+    }
+  }
+  let isCenterY = false;
+  if (snappedYVal === null && Math.abs(50 - clampedY) <= tolY * 0.85) {
+    snappedYVal = 50;
+    isCenterY = true;
+  }
+
+  const finalX = snappedXVal !== null ? Number(Math.min(maxBound, Math.max(minBound, snappedXVal)).toFixed(1)) : roundedX;
+  const finalY = snappedYVal !== null ? Number(Math.min(maxBound, Math.max(minBound, snappedYVal)).toFixed(1)) : roundedY;
+
+  const guideX =
+    snappedXVal !== null
+      ? {
+          coord: finalX,
+          isCenter: isCenterX,
+          matches: isCenterX ? [] : anchors.filter((a) => Math.abs(a.x - snappedXVal) <= 0.15)
+        }
+      : null;
+
+  const guideY =
+    snappedYVal !== null
+      ? {
+          coord: finalY,
+          isCenter: isCenterY,
+          matches: isCenterY ? [] : anchors.filter((a) => Math.abs(a.y - snappedYVal) <= 0.15)
+        }
+      : null;
+
+  return { x: finalX, y: finalY, guideX, guideY };
+}
+
+function appendGuideDot(svg, x, y, color) {
+  svg.appendChild(
+    createSvgEl('line', {
+      x1: x,
+      y1: y,
+      x2: x,
+      y2: y,
+      stroke: '#ffffff',
+      'stroke-width': 9,
+      'stroke-linecap': 'round',
+      'vector-effect': 'non-scaling-stroke'
+    })
+  );
+  svg.appendChild(
+    createSvgEl('line', {
+      x1: x,
+      y1: y,
+      x2: x,
+      y2: y,
+      stroke: color,
+      'stroke-width': 5.5,
+      'stroke-linecap': 'round',
+      'vector-effect': 'non-scaling-stroke'
+    })
+  );
+}
+
+function renderAlignGuides(guideSvg, snapResult, opts = {}) {
+  if (!guideSvg) return;
+  guideSvg.innerHTML = '';
+  if (!snapResult) return;
+
+  const { x, y, guideX, guideY } = snapResult;
+
+  if (guideX) {
+    const color = guideX.isCenter ? '#0284c7' : '#ef4444';
+    const ys = guideX.matches.map((m) => m.y).concat(y);
+    const y1 = guideX.isCenter ? 2 : Math.max(1, Math.min(...ys) - 3);
+    const y2 = guideX.isCenter ? 98 : Math.min(99, Math.max(...ys) + 3);
+    guideSvg.appendChild(
+      createSvgEl('line', {
+        x1: guideX.coord,
+        y1,
+        x2: guideX.coord,
+        y2,
+        stroke: color,
+        'stroke-width': 1.6,
+        'stroke-dasharray': '4 3',
+        'vector-effect': 'non-scaling-stroke'
+      })
+    );
+    for (const m of guideX.matches) {
+      appendGuideDot(guideSvg, guideX.coord, m.y, color);
+    }
+  }
+
+  if (guideY) {
+    const color = guideY.isCenter ? '#0284c7' : '#ef4444';
+    const xs = guideY.matches.map((m) => m.x).concat(x);
+    const x1 = guideY.isCenter ? 2 : Math.max(1, Math.min(...xs) - 3);
+    const x2 = guideY.isCenter ? 98 : Math.min(99, Math.max(...xs) + 3);
+    guideSvg.appendChild(
+      createSvgEl('line', {
+        x1,
+        y1: guideY.coord,
+        x2,
+        y2: guideY.coord,
+        stroke: color,
+        'stroke-width': 1.6,
+        'stroke-dasharray': '4 3',
+        'vector-effect': 'non-scaling-stroke'
+      })
+    );
+    for (const m of guideY.matches) {
+      appendGuideDot(guideSvg, m.x, guideY.coord, color);
+    }
+  }
+
+  if (opts.showPreviewDot && (guideX || guideY)) {
+    appendGuideDot(guideSvg, x, y, '#7c3aed');
+  }
+}
+
+function flashAlignGuide(pageNum, axis, target, currentX, currentY) {
+  clearAllAlignGuides();
+  const guideSvg = getGuideSvgForPage(pageNum);
+  if (!guideSvg) return;
+  const snapResult = {
+    x: currentX,
+    y: currentY,
+    guideX: axis === 'x' ? { coord: target.x, isCenter: false, matches: [target] } : null,
+    guideY: axis === 'y' ? { coord: target.y, isCenter: false, matches: [target] } : null
+  };
+  renderAlignGuides(guideSvg, snapResult);
+  alignFlashTimer = setTimeout(() => {
+    clearAlignGuides(guideSvg);
+    alignFlashTimer = null;
+  }, 900);
+}
+
+function alignSelectedHotspotToNearest(axis) {
+  const hs = state.hotspots.find((item) => item.id === state.selectedId);
+  if (!hs) return;
+  const candidates = state.hotspots.filter((item) => item.page === hs.page && item.id !== hs.id);
+  if (!candidates.length) {
+    showToast('같은 페이지에 맞출 다른 버튼이 없습니다.');
+    return;
+  }
+
+  // Score by primary axis distance first, then cross-axis proximity
+  let best = null;
+  let bestScore = Infinity;
+  for (const cand of candidates) {
+    const primaryDiff = axis === 'x' ? Math.abs(cand.x - hs.x) : Math.abs(cand.y - hs.y);
+    const crossDiff = axis === 'x' ? Math.abs(cand.y - hs.y) : Math.abs(cand.x - hs.x);
+    if (primaryDiff > 18) continue;
+    const score = primaryDiff * 10 + crossDiff * 0.2;
+    if (score < bestScore) {
+      bestScore = score;
+      best = cand;
+    }
+  }
+
+  if (!best) {
+    showToast(axis === 'x' ? '위/아래 근처에 세로로 맞출 버튼이 없습니다.' : '양옆 근처에 가로로 맞출 버튼이 없습니다.');
+    return;
+  }
+
+  if (axis === 'x') {
+    const dx = best.x - hs.x;
+    hs.x = best.x;
+    if (hs.type === 'line_answer' && typeof hs.endX === 'number') {
+      hs.endX = Number(Math.min(97, Math.max(3, hs.endX + dx)).toFixed(1));
+    }
+  } else {
+    const dy = best.y - hs.y;
+    hs.y = best.y;
+    if (hs.type === 'line_answer' && typeof hs.endY === 'number') {
+      hs.endY = Number(Math.min(97, Math.max(3, hs.endY + dy)).toFixed(1));
+    }
+  }
+
+  persistState();
+  renderHotspots();
+  selectHotspot(hs.id);
+  flashAlignGuide(hs.page, axis, best, hs.x, hs.y);
+  showToast(
+    axis === 'x'
+      ? `세로선(X ${best.x.toFixed(1)}%)에 딱 맞췄습니다.`
+      : `가로선(Y ${best.y.toFixed(1)}%)에 딱 맞췄습니다.`
+  );
+}
+
 function renderLineLayer(svgEl, overlayEl, pageNum) {
   if (!svgEl) return;
   svgEl.innerHTML = '';
@@ -677,21 +955,26 @@ function renderLineLayer(svgEl, overlayEl, pageNum) {
           if (Math.abs(ev.clientX - startClientX) > 2 || Math.abs(ev.clientY - startClientY) > 2) {
             moved = true;
           }
-          const nx = Number(Math.min(97, Math.max(3, origEndX + dxPct)).toFixed(1));
-          const ny = Number(Math.min(97, Math.max(3, origEndY + dyPct)).toFixed(1));
-          hs.endX = nx;
-          hs.endY = ny;
-          endHandle.style.left = `${nx}%`;
-          endHandle.style.top = `${ny}%`;
-          lineEl.setAttribute('x2', String(nx));
-          lineEl.setAttribute('y2', String(ny));
-          endDot.setAttribute('x1', String(nx));
-          endDot.setAttribute('y1', String(ny));
-          endDot.setAttribute('x2', String(nx));
-          endDot.setAttribute('y2', String(ny));
+          const snap = computeSmartSnap(origEndX + dxPct, origEndY + dyPct, pageNum, rect, {
+            excludeId: hs.id,
+            bypass: ev.altKey,
+            includeSelfEndpoint: { x: hs.x, y: hs.y }
+          });
+          hs.endX = snap.x;
+          hs.endY = snap.y;
+          endHandle.style.left = `${snap.x}%`;
+          endHandle.style.top = `${snap.y}%`;
+          lineEl.setAttribute('x2', String(snap.x));
+          lineEl.setAttribute('y2', String(snap.y));
+          endDot.setAttribute('x1', String(snap.x));
+          endDot.setAttribute('y1', String(snap.y));
+          endDot.setAttribute('x2', String(snap.x));
+          endDot.setAttribute('y2', String(snap.y));
+          renderAlignGuides(getGuideSvgForOverlay(overlayEl), snap);
         };
 
         const onUp = () => {
+          clearAlignGuides(getGuideSvgForOverlay(overlayEl));
           window.removeEventListener('pointermove', onMove);
           window.removeEventListener('pointerup', onUp);
           window.removeEventListener('pointercancel', onUp);
@@ -1085,10 +1368,12 @@ function attachHotspotEvents(node, triggerEl, hs, overlayEl, svgEl) {
       if (Math.abs(ev.clientX - startClientX) > 3 || Math.abs(ev.clientY - startClientY) > 3) {
         moved = true;
       }
-      const nx = Math.min(97, Math.max(3, startX + dxPct));
-      const ny = Math.min(97, Math.max(3, startY + dyPct));
-      hs.x = Number(nx.toFixed(1));
-      hs.y = Number(ny.toFixed(1));
+      const snap = computeSmartSnap(startX + dxPct, startY + dyPct, hs.page, rect, {
+        excludeId: hs.id,
+        bypass: ev.altKey
+      });
+      hs.x = snap.x;
+      hs.y = snap.y;
       node.style.left = `${hs.x}%`;
       node.style.top = `${hs.y}%`;
       if (svgLine) {
@@ -1101,6 +1386,7 @@ function attachHotspotEvents(node, triggerEl, hs, overlayEl, svgEl) {
         svgStartDot.setAttribute('x2', String(hs.x));
         svgStartDot.setAttribute('y2', String(hs.y));
       }
+      renderAlignGuides(getGuideSvgForOverlay(overlayEl), snap);
       if (state.selectedId === hs.id) {
         el.propCoords.textContent = `위치: 원본 ${hs.page}쪽 · X ${hs.x.toFixed(1)}%, Y ${hs.y.toFixed(1)}%`;
       }
@@ -1108,6 +1394,7 @@ function attachHotspotEvents(node, triggerEl, hs, overlayEl, svgEl) {
 
     const onUp = () => {
       dragging = false;
+      clearAlignGuides(getGuideSvgForOverlay(overlayEl));
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onUp);
@@ -1319,6 +1606,7 @@ function escapeHtml(str) {
 }
 
 function renderHotspots() {
+  clearAllAlignGuides();
   const { leftPage, rightPage } = getVisiblePages();
   renderOverlay(el.leftOverlay, leftPage, el.leftLineSvg);
   renderOverlay(el.rightOverlay, rightPage, el.rightLineSvg);
@@ -1822,6 +2110,29 @@ function setupStagePanning() {
 
 let pointerDownOnEmptyOverlay = false;
 
+function handleOverlayHover(e, overlayEl) {
+  const guideSvg = getGuideSvgForOverlay(overlayEl);
+  if (state.mode !== 'editor' || !state.activeTool || e.target.closest('.hotspot-node')) {
+    clearAlignGuides(guideSvg);
+    return;
+  }
+  const pageNum = Number(overlayEl.dataset.page);
+  if (!pageNum) {
+    clearAlignGuides(guideSvg);
+    return;
+  }
+  const rect = overlayEl.getBoundingClientRect();
+  if (!rect.width || !rect.height) return;
+  const rawX = ((e.clientX - rect.left) / rect.width) * 100;
+  const rawY = ((e.clientY - rect.top) / rect.height) * 100;
+  const snap = computeSmartSnap(rawX, rawY, pageNum, rect, {
+    bypass: e.altKey,
+    clampMin: 4,
+    clampMax: 96
+  });
+  renderAlignGuides(guideSvg, snap, { showPreviewDot: true });
+}
+
 function handleOverlayClick(e, overlayEl) {
   if (state.suppressNextStageClick) return;
   if (state.mode !== 'editor') return;
@@ -1840,8 +2151,16 @@ function handleOverlayClick(e, overlayEl) {
   if (!pageNum) return;
 
   const rect = overlayEl.getBoundingClientRect();
-  const x = Number(Math.min(96, Math.max(4, ((e.clientX - rect.left) / rect.width) * 100)).toFixed(1));
-  const y = Number(Math.min(96, Math.max(4, ((e.clientY - rect.top) / rect.height) * 100)).toFixed(1));
+  const rawX = ((e.clientX - rect.left) / rect.width) * 100;
+  const rawY = ((e.clientY - rect.top) / rect.height) * 100;
+  const snap = computeSmartSnap(rawX, rawY, pageNum, rect, {
+    bypass: e.altKey,
+    clampMin: 4,
+    clampMax: 96
+  });
+  const x = snap.x;
+  const y = snap.y;
+  clearAllAlignGuides();
 
   const tool = state.activeTool;
   const isAnswer = tool === 'answer_text' || tool === 'answer_image';
@@ -2335,6 +2654,9 @@ function bindInspectorEvents() {
     deleteHotspotById(state.selectedId);
   });
 
+  el.alignColBtn.addEventListener('click', () => alignSelectedHotspotToNearest('x'));
+  el.alignRowBtn.addEventListener('click', () => alignSelectedHotspotToNearest('y'));
+
   el.closeInspectorBtn.addEventListener('click', () => selectHotspot(null));
 }
 
@@ -2356,12 +2678,27 @@ function bindEvents() {
     pill.addEventListener('click', () => selectTool(pill.dataset.tool));
   });
 
+  el.toggleSnapGuidesBtn.addEventListener('click', () => {
+    state.snapGuidesEnabled = !state.snapGuidesEnabled;
+    el.toggleSnapGuidesBtn.classList.toggle('is-selected', state.snapGuidesEnabled);
+    if (!state.snapGuidesEnabled) clearAllAlignGuides();
+    showToast(
+      state.snapGuidesEnabled
+        ? '정렬선 및 자석 맞춤이 켜졌습니다.'
+        : '정렬선 및 자석 맞춤이 꺼졌습니다.'
+    );
+  });
+
   el.leftOverlay.addEventListener('pointerdown', (e) => {
     pointerDownOnEmptyOverlay = e.target === el.leftOverlay;
   });
   el.rightOverlay.addEventListener('pointerdown', (e) => {
     pointerDownOnEmptyOverlay = e.target === el.rightOverlay;
   });
+  el.leftOverlay.addEventListener('pointermove', (e) => handleOverlayHover(e, el.leftOverlay));
+  el.rightOverlay.addEventListener('pointermove', (e) => handleOverlayHover(e, el.rightOverlay));
+  el.leftOverlay.addEventListener('pointerleave', () => clearAlignGuides(el.leftGuideSvg));
+  el.rightOverlay.addEventListener('pointerleave', () => clearAlignGuides(el.rightGuideSvg));
   el.leftOverlay.addEventListener('click', (e) => handleOverlayClick(e, el.leftOverlay));
   el.rightOverlay.addEventListener('click', (e) => handleOverlayClick(e, el.rightOverlay));
 
