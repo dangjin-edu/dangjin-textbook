@@ -1433,28 +1433,6 @@ function attachHotspotEvents(node, triggerEl, hs, overlayEl, svgEl) {
   });
 }
 
-function toYouTubeEmbedUrl(url) {
-  if (!url) return null;
-  try {
-    const u = new URL(url);
-    if (u.hostname.includes('youtu.be')) {
-      const id = u.pathname.replace('/', '');
-      return id ? `https://www.youtube.com/embed/${id}?autoplay=1` : null;
-    }
-    if (u.hostname.includes('youtube.com')) {
-      if (u.pathname.startsWith('/shorts/')) {
-        const id = u.pathname.split('/')[2];
-        return id ? `https://www.youtube.com/embed/${id}?autoplay=1` : null;
-      }
-      const id = u.searchParams.get('v');
-      return id ? `https://www.youtube.com/embed/${id}?autoplay=1` : null;
-    }
-  } catch {
-    return null;
-  }
-  return null;
-}
-
 function activateHotspot(hs) {
   if (hs.type === 'answer' || hs.type === 'line_answer' || hs.type === 'crossword_answer') {
     if (hs.type === 'answer' && hs.answerStyle === 'modal') {
@@ -1465,13 +1443,8 @@ function activateHotspot(hs) {
     return;
   }
 
-  if (hs.type === 'video') {
-    openVideoInNewTab(hs);
-    return;
-  }
-
-  if (hs.type === 'article') {
-    openArticleModal(hs);
+  if (hs.type === 'video' || hs.type === 'article') {
+    openHotspotLinkInNewTab(hs);
     return;
   }
 
@@ -1490,95 +1463,21 @@ function resolveSafeExternalUrl(rawUrl) {
   return `https://${trimmed}`;
 }
 
-function openVideoInNewTab(hs) {
+function openHotspotLinkInNewTab(hs) {
   const targetUrl = resolveSafeExternalUrl(hs.url);
   if (!targetUrl) {
-    showToast('연결된 영상 링크(URL)가 없거나 올바르지 않습니다.');
+    const label = hs.type === 'article' ? '기사/웹' : '영상';
+    showToast(`연결된 ${label} 링크(URL)가 없거나 올바르지 않습니다.`);
     return;
   }
-  const win = window.open(targetUrl, '_blank', 'noopener,noreferrer');
-  if (!win) {
-    openVideoModal(hs);
-  }
-}
-
-function openVideoModal(hs) {
-  el.modalBadge.textContent = '영상 자료';
-  el.modalBadge.style.background = 'var(--video-color)';
-  el.modalTitle.textContent = hs.title || '영상 보기';
-
-  const embed = toYouTubeEmbedUrl(hs.url);
-  if (embed) {
-    el.modalBody.innerHTML = `
-      <div class="video-frame-wrap">
-        <iframe src="${escapeHtml(embed)}" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>
-      </div>
-    `;
-  } else if (hs.url && /\.(mp4|webm|ogg)(\?|$)/i.test(hs.url)) {
-    el.modalBody.innerHTML = `
-      <div class="video-frame-wrap">
-        <video src="${escapeHtml(hs.url)}" controls autoplay></video>
-      </div>
-    `;
-  } else {
-    el.modalBody.innerHTML = `
-      <div class="article-preview-box">
-        <p style="margin:0 0 8px;">등록된 영상 링크를 새 창에서 열 수 있습니다.</p>
-        <div class="article-url-text">${escapeHtml(hs.url || '등록된 URL이 없습니다.')}</div>
-      </div>
-    `;
-  }
-
-  el.modalFooter.innerHTML = '';
-  if (hs.url) {
-    const linkBtn = document.createElement('a');
-    linkBtn.className = 'btn btn--secondary';
-    linkBtn.href = hs.url;
-    linkBtn.target = '_blank';
-    linkBtn.rel = 'noopener noreferrer';
-    linkBtn.textContent = '새 탭에서 영상 열기';
-    el.modalFooter.appendChild(linkBtn);
-  }
-  const closeBtn = document.createElement('button');
-  closeBtn.type = 'button';
-  closeBtn.className = 'btn';
-  closeBtn.textContent = '닫기';
-  closeBtn.addEventListener('click', closeModal);
-  el.modalFooter.appendChild(closeBtn);
-
-  el.contentModal.hidden = false;
-}
-
-function openArticleModal(hs) {
-  el.modalBadge.textContent = '신문기사 / 웹';
-  el.modalBadge.style.background = 'var(--article-color)';
-  el.modalTitle.textContent = hs.title || '참고 기사 보기';
-
-  el.modalBody.innerHTML = `
-    <div class="article-preview-box">
-      <p style="margin:0;">${escapeHtml(hs.note || '아래 버튼을 누르면 연결된 기사 또는 웹사이트가 새 탭에서 열립니다.')}</p>
-      <div class="article-url-text">${escapeHtml(hs.url || '등록된 URL이 없습니다.')}</div>
-    </div>
-  `;
-
-  el.modalFooter.innerHTML = '';
-  if (hs.url) {
-    const openBtn = document.createElement('a');
-    openBtn.className = 'btn btn--secondary';
-    openBtn.href = hs.url;
-    openBtn.target = '_blank';
-    openBtn.rel = 'noopener noreferrer';
-    openBtn.textContent = '새 탭에서 기사 열기';
-    el.modalFooter.appendChild(openBtn);
-  }
-  const closeBtn = document.createElement('button');
-  closeBtn.type = 'button';
-  closeBtn.className = 'btn';
-  closeBtn.textContent = '닫기';
-  closeBtn.addEventListener('click', closeModal);
-  el.modalFooter.appendChild(closeBtn);
-
-  el.contentModal.hidden = false;
+  const link = document.createElement('a');
+  link.href = targetUrl;
+  link.target = '_blank';
+  link.rel = 'noopener noreferrer';
+  link.style.display = 'none';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
 }
 
 function openAnswerModal(hs) {
