@@ -267,6 +267,11 @@ function getVisiblePages() {
 }
 
 function setMode(mode) {
+  if (mode === 'editor' && FirebaseTextbook.isConfigured() && !FirebaseTextbook.isAuthorizedAdmin(state.user)) {
+    const allowed = FirebaseTextbook.getAllowedAdminEmails().join(', ');
+    showToast(`허용된 관리자 계정(${allowed})으로 로그인해야 편집자 모드를 이용할 수 있습니다.`);
+    return;
+  }
   state.mode = mode;
   closeHotspotContextMenu();
   const isEditor = mode === 'editor';
@@ -303,16 +308,29 @@ async function handleEnterEditorClick() {
     return;
   }
   if (state.user) {
-    setMode('editor');
-    return;
+    if (FirebaseTextbook.isAuthorizedAdmin(state.user)) {
+      setMode('editor');
+      return;
+    }
+    await FirebaseTextbook.signOutUser();
+    state.user = null;
+    updateCloudUi();
   }
   try {
     showToast('관리자 구글 로그인 창을 여는 중입니다...');
-    await FirebaseTextbook.signInWithGoogle();
+    const user = await FirebaseTextbook.signInWithGoogle();
+    state.user = user;
+    updateCloudUi();
     setMode('editor');
   } catch (err) {
     console.error(err);
-    showToast('구글 로그인이 취소되었거나 실패했습니다. 팝업 차단을 확인해 주세요.');
+    const allowed = FirebaseTextbook.getAllowedAdminEmails().join(', ');
+    if (err && (err.code === 'UNAUTHORIZED_ADMIN' || err.message === 'UNAUTHORIZED_ADMIN')) {
+      const who = err.email ? `(${err.email}) ` : '';
+      showToast(`접근 거부: ${who}관리자 계정(${allowed})만 편집자 모드를 사용할 수 있습니다.`);
+    } else {
+      showToast('구글 로그인이 취소되었거나 실패했습니다. 팝업 차단을 확인해 주세요.');
+    }
   }
 }
 
@@ -2011,10 +2029,10 @@ async function handleCloudSave() {
     showToast('Firebase 설정이 연결되지 않았습니다.');
     return;
   }
-  if (!state.user) {
-    showToast('구글 로그인이 필요합니다.');
+  if (!state.user || !FirebaseTextbook.isAuthorizedAdmin(state.user)) {
+    showToast('허용된 관리자 계정 로그인이 필요합니다.');
     await handleEnterEditorClick();
-    if (!state.user) return;
+    if (!state.user || !FirebaseTextbook.isAuthorizedAdmin(state.user)) return;
   }
 
   const cleanHotspots = state.hotspots.map((h) =>
@@ -2047,7 +2065,10 @@ async function handleCloudSave() {
     showToast('Firebase 클라우드에 저장되었습니다! 이제 모든 방문자에게 반영됩니다.');
   } catch (err) {
     console.error(err);
-    if (err && (err.code === 'permission-denied' || String(err.message).includes('permission'))) {
+    if (err && (err.code === 'UNAUTHORIZED_ADMIN' || String(err.message) === 'UNAUTHORIZED_ADMIN')) {
+      const allowed = FirebaseTextbook.getAllowedAdminEmails().join(', ');
+      showToast(`저장 거부: 관리자 계정(${allowed})만 저장할 수 있습니다.`);
+    } else if (err && (err.code === 'permission-denied' || String(err.message).includes('permission'))) {
       showToast('저장 권한이 없습니다. Firestore 규칙에 등록된 관리자 이메일로 로그인했는지 확인하세요.');
     } else {
       showToast('클라우드 저장 중 오류가 발생했습니다.');
@@ -2638,8 +2659,27 @@ async function init() {
   bindEvents();
   await renderSpread();
 
-  FirebaseTextbook.onAuthChange((user) => {
+  FirebaseTextbook.onAuthChange(async (user) => {
+    if (user && !FirebaseTextbook.isAuthorizedAdmin(user)) {
+      const deniedEmail = user.email || '';
+      const allowed = FirebaseTextbook.getAllowedAdminEmails().join(', ');
+      state.user = null;
+      updateCloudUi();
+      if (state.mode === 'editor') {
+        setMode('viewer');
+      }
+      try {
+        await FirebaseTextbook.signOutUser();
+      } catch (err) {
+        console.warn('Unauthorized sign-out failed:', err);
+      }
+      showToast(`접근 거부: ${deniedEmail ? `(${deniedEmail}) ` : ''}관리자 계정(${allowed})만 편집할 수 있습니다.`);
+      return;
+    }
     state.user = user;
+    if (!user && FirebaseTextbook.isConfigured() && state.mode === 'editor') {
+      setMode('viewer');
+    }
     updateCloudUi();
   });
   await loadFromCloud();

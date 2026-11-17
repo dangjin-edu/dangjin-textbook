@@ -14,6 +14,12 @@ import {
   serverTimestamp
 } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 
+const ALLOWED_ADMIN_EMAILS = ['dkswnsgud808@gmail.com'];
+
+function normalizeEmail(email) {
+  return String(email || '').trim().toLowerCase();
+}
+
 const config = window.FIREBASE_CONFIG;
 let app = null;
 let auth = null;
@@ -28,6 +34,15 @@ if (config && config.apiKey && config.projectId) {
 export const FirebaseTextbook = {
   isConfigured() {
     return Boolean(app && auth && db);
+  },
+
+  isAuthorizedAdmin(user = auth ? auth.currentUser : null) {
+    if (!user || !user.email) return false;
+    return ALLOWED_ADMIN_EMAILS.includes(normalizeEmail(user.email));
+  },
+
+  getAllowedAdminEmails() {
+    return [...ALLOWED_ADMIN_EMAILS];
   },
 
   getCurrentUser() {
@@ -47,6 +62,14 @@ export const FirebaseTextbook = {
     const provider = new GoogleAuthProvider();
     provider.setCustomParameters({ prompt: 'select_account' });
     const result = await signInWithPopup(auth, provider);
+    if (!this.isAuthorizedAdmin(result.user)) {
+      const attemptedEmail = result.user?.email || '';
+      await signOut(auth);
+      const err = new Error('UNAUTHORIZED_ADMIN');
+      err.code = 'UNAUTHORIZED_ADMIN';
+      err.email = attemptedEmail;
+      throw err;
+    }
     return result.user;
   },
 
@@ -67,6 +90,9 @@ export const FirebaseTextbook = {
     if (!db) throw new Error('Firebase Firestore가 초기화되지 않았습니다.');
     if (!auth || !auth.currentUser) {
       throw new Error('AUTH_REQUIRED');
+    }
+    if (!this.isAuthorizedAdmin(auth.currentUser)) {
+      throw new Error('UNAUTHORIZED_ADMIN');
     }
     const ref = doc(db, 'textbooks', bookId);
     await setDoc(ref, {
