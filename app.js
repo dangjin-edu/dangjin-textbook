@@ -1117,6 +1117,7 @@ function createHotspotNode(hs, overlayEl, svgEl) {
     node.style.width = `${hs.boxWidth || 24}%`;
     node.style.height = `${hs.boxHeight || 6.5}%`;
     const grid = buildCrosswordBox(hs, state.mode === 'editor', overlayEl);
+    node.appendChild(grid);
     if (state.mode === 'viewer') {
       grid.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -1126,7 +1127,6 @@ function createHotspotNode(hs, overlayEl, svgEl) {
     } else {
       attachHotspotEvents(node, grid, hs, overlayEl, svgEl);
     }
-    node.appendChild(grid);
   } else if (state.mode === 'editor' && hs.type === 'answer' && answerKind === 'image') {
     node.classList.add('is-answer-box');
     node.style.width = `${hs.answerWidth || 30}%`;
@@ -1440,8 +1440,15 @@ function attachHotspotEvents(node, triggerEl, hs, overlayEl, svgEl) {
         }
       };
 
-      const onUp = () => {
+      const onUp = (ev) => {
         resizing = false;
+        if (ev && ev.pointerId !== undefined) {
+          try {
+            resizeHandle.releasePointerCapture(ev.pointerId);
+          } catch {
+            // Ignore if not captured
+          }
+        }
         window.removeEventListener('pointermove', onMove);
         window.removeEventListener('pointerup', onUp);
         window.removeEventListener('pointercancel', onUp);
