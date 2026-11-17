@@ -3,6 +3,10 @@ import { FirebaseTextbook } from './firebase-service.js';
 const STORAGE_KEY = 'digital_textbook_proto_v2';
 const DEFAULT_ZOOM = 1.3;
 
+function getDefaultZoom() {
+  return window.innerWidth <= 640 ? 1.0 : DEFAULT_ZOOM;
+}
+
 if (window.pdfjsLib) {
   window.pdfjsLib.GlobalWorkerOptions.workerSrc =
     'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
@@ -2769,7 +2773,7 @@ function bindEvents() {
   el.zoomResetBtn.addEventListener('click', () => {
     state.panX = 0;
     state.panY = 0;
-    setZoom(DEFAULT_ZOOM);
+    setZoom(getDefaultZoom());
   });
 
   el.toggleLayoutBtn.addEventListener('click', () => {
@@ -2910,6 +2914,10 @@ function bindEvents() {
 
 async function init() {
   loadSavedState();
+  if (window.innerWidth <= 640) {
+    state.zoom = 1.0;
+    state.layout = 'single';
+  }
   el.bookTitleInput.value = state.bookTitle;
   el.pdfPathInput.value = state.pdfUrl || '';
   applyZoomAndPan();
