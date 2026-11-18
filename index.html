@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=20261118b" />
+  <link rel="stylesheet" href="styles.css?v=20261118c" />
   <!-- PDF.js (CDN) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 </head>
@@ -214,7 +214,7 @@
                   <canvas id="leftCanvas" class="page-canvas"></canvas>
                   <div id="leftSamplePage" class="sample-page-layer"></div>
                   <svg id="leftLineSvg" class="line-svg-layer" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>
-                  <svg id="leftInkSvg" class="ink-svg-layer" viewBox="0 0 1000 1000" preserveAspectRatio="none"></svg>
+                  <svg id="leftInkSvg" class="ink-svg-layer" viewBox="0 0 1000 1320" preserveAspectRatio="none"></svg>
                   <div id="leftOverlay" class="hotspot-overlay" data-side="left"></div>
                   <svg id="leftGuideSvg" class="align-guide-layer" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"></svg>
                 </div>
@@ -231,7 +231,7 @@
                   <canvas id="rightCanvas" class="page-canvas"></canvas>
                   <div id="rightSamplePage" class="sample-page-layer"></div>
                   <svg id="rightLineSvg" class="line-svg-layer" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>
-                  <svg id="rightInkSvg" class="ink-svg-layer" viewBox="0 0 1000 1000" preserveAspectRatio="none"></svg>
+                  <svg id="rightInkSvg" class="ink-svg-layer" viewBox="0 0 1000 1320" preserveAspectRatio="none"></svg>
                   <div id="rightOverlay" class="hotspot-overlay" data-side="right"></div>
                   <svg id="rightGuideSvg" class="align-guide-layer" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"></svg>
                 </div>
@@ -455,6 +455,11 @@
             <button class="ink-color-dot" type="button" data-ink-color="#facc15" style="background:#facc15;" title="노랑"></button>
             <button class="ink-color-dot" type="button" data-ink-color="#16a34a" style="background:#16a34a;" title="초록"></button>
             <button class="ink-color-dot" type="button" data-ink-color="#0f172a" style="background:#0f172a;" title="검정"></button>
+            <span class="ink-palette-sep" aria-hidden="true"></span>
+            <label class="ink-width-control" for="inkWidthInput" title="펜/형광펜 굵기 조절">
+              <input id="inkWidthInput" class="ink-width-slider" type="range" min="1" max="12" step="1" value="3" />
+              <span id="inkWidthLabel" class="ink-width-label">3px</span>
+            </label>
           </div>
           <button id="inkClearBtn" class="tool-icon-btn" type="button" title="현재 페이지 필기 모두 지우기">
             🗑️
@@ -518,6 +523,6 @@
 
   <script src="firebase-config.js"></script>
   <script src="sample-data.js"></script>
-  <script type="module" src="app.js?v=20261118b"></script>
+  <script type="module" src="app.js?v=20261118c"></script>
 </body>
 </html>

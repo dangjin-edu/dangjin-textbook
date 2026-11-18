@@ -45,6 +45,8 @@ const state = {
   inkTool: null, // 'pen' | 'highlighter' | 'eraser' | null
   inkColor: '#ef4444',
   inkColorUserPicked: false,
+  penWidth: 3,
+  highlighterWidth: 18,
   pageInk: {}, // { [pageNum]: Array<{ id, tool, color, width, points }> }
   availableBooks: [],
   user: null,
@@ -134,6 +136,8 @@ const el = {
   inkHighlighterBtn: document.getElementById('inkHighlighterBtn'),
   inkEraserBtn: document.getElementById('inkEraserBtn'),
   inkPaletteWrap: document.getElementById('inkPaletteWrap'),
+  inkWidthInput: document.getElementById('inkWidthInput'),
+  inkWidthLabel: document.getElementById('inkWidthLabel'),
   inkClearBtn: document.getElementById('inkClearBtn'),
   zoomLabel: document.getElementById('zoomLabel'),
   toggleLayoutBtn: document.getElementById('toggleLayoutBtn'),
@@ -1682,30 +1686,27 @@ function escapeHtml(str) {
     .replace(/'/g, '&#39;');
 }
 
-function getInkStorageKey() {
-  return `digital_textbook_ink_v1_${state.bookId}`;
+function clearLegacyInkStorage() {
+  try {
+    const keysToRemove = [];
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith('digital_textbook_ink_v1_')) {
+        keysToRemove.push(k);
+      }
+    }
+    keysToRemove.forEach((k) => localStorage.removeItem(k));
+  } catch {
+    // Ignore storage access errors
+  }
 }
 
 function loadLocalInk() {
-  try {
-    const raw = localStorage.getItem(getInkStorageKey());
-    if (!raw) {
-      state.pageInk = {};
-      return;
-    }
-    const parsed = JSON.parse(raw);
-    state.pageInk = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
-  } catch {
-    state.pageInk = {};
-  }
+  state.pageInk = {};
 }
 
 function persistLocalInk() {
-  try {
-    localStorage.setItem(getInkStorageKey(), JSON.stringify(state.pageInk));
-  } catch {
-    showToast('브라우저 필기 저장 공간이 부족합니다.');
-  }
+  // Intentionally no-op: ink is kept in memory only and cleared when the page closes or reloads
 }
 
 function syncInkColorDots() {
@@ -1717,6 +1718,23 @@ function syncInkColorDots() {
   });
 }
 
+function syncInkWidthUi() {
+  if (!el.inkWidthInput || !el.inkWidthLabel) return;
+  if (state.inkTool === 'highlighter') {
+    el.inkWidthInput.min = '8';
+    el.inkWidthInput.max = '40';
+    el.inkWidthInput.step = '2';
+    el.inkWidthInput.value = String(state.highlighterWidth);
+    el.inkWidthLabel.textContent = `${state.highlighterWidth}px`;
+  } else {
+    el.inkWidthInput.min = '1';
+    el.inkWidthInput.max = '12';
+    el.inkWidthInput.step = '1';
+    el.inkWidthInput.value = String(state.penWidth);
+    el.inkWidthLabel.textContent = `${state.penWidth}px`;
+  }
+}
+
 function setInkTool(tool) {
   const next = state.inkTool === tool ? null : tool;
   state.inkTool = next;
@@ -1726,6 +1744,7 @@ function setInkTool(tool) {
     state.inkColor = '#ef4444';
   }
   syncInkColorDots();
+  syncInkWidthUi();
 
   if (el.inkPenBtn) el.inkPenBtn.classList.toggle('is-active', next === 'pen');
   if (el.inkHighlighterBtn) el.inkHighlighterBtn.classList.toggle('is-active', next === 'highlighter');
@@ -1740,9 +1759,10 @@ function buildInkPolylineNode(stroke) {
     points: pts,
     fill: 'none',
     stroke: stroke.color || '#ef4444',
-    'stroke-width': stroke.width || (stroke.tool === 'highlighter' ? 28 : 4.5),
+    'stroke-width': stroke.width || (stroke.tool === 'highlighter' ? state.highlighterWidth : state.penWidth),
     'stroke-linecap': 'round',
-    'stroke-linejoin': 'round'
+    'stroke-linejoin': 'round',
+    'vector-effect': 'non-scaling-stroke'
   };
   if (stroke.tool === 'highlighter') {
     attrs.class = 'ink-stroke--highlighter';
@@ -1787,7 +1807,7 @@ function bindInkEvents(svgEl, getPageNum) {
     const rect = svgEl.getBoundingClientRect();
     if (!rect.width || !rect.height) return null;
     const x = Math.min(1000, Math.max(0, ((clientX - rect.left) / rect.width) * 1000));
-    const y = Math.min(1000, Math.max(0, ((clientY - rect.top) / rect.height) * 1000));
+    const y = Math.min(1320, Math.max(0, ((clientY - rect.top) / rect.height) * 1320));
     return [Number(x.toFixed(1)), Number(y.toFixed(1))];
   };
 
@@ -1862,7 +1882,7 @@ function bindInkEvents(svgEl, getPageNum) {
       id: `ink-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       tool: state.inkTool,
       color: state.inkColor,
-      width: state.inkTool === 'highlighter' ? 28 : 4.5,
+      width: state.inkTool === 'highlighter' ? state.highlighterWidth : state.penWidth,
       points: [startPt, startPt]
     };
     const key = String(pageNum);
@@ -3544,6 +3564,16 @@ function bindEvents() {
       syncInkColorDots();
     });
   });
+  el.inkWidthInput.addEventListener('input', () => {
+    const val = Number(el.inkWidthInput.value);
+    if (!Number.isFinite(val)) return;
+    if (state.inkTool === 'highlighter') {
+      state.highlighterWidth = val;
+    } else {
+      state.penWidth = val;
+    }
+    el.inkWidthLabel.textContent = `${val}px`;
+  });
   bindInkEvents(el.leftInkSvg, () => getVisiblePages().leftPage);
   bindInkEvents(el.rightInkSvg, () => getVisiblePages().rightPage);
 
@@ -3617,6 +3647,7 @@ function bindEvents() {
 }
 
 async function init() {
+  clearLegacyInkStorage();
   loadSavedState();
   loadLocalInk();
   if (window.innerWidth <= 640) {

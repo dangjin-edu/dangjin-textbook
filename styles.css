@@ -977,9 +977,16 @@ body {
 }
 
 .app-shell.is-ink-active .ink-svg-layer {
+  z-index: 10;
   pointer-events: auto;
   cursor: crosshair;
   touch-action: none;
+}
+
+.app-shell.is-ink-active .hotspot-overlay,
+.app-shell.is-ink-active .hotspot-node,
+.app-shell.is-ink-active .line-hit-area {
+  pointer-events: none !important;
 }
 
 .ink-stroke--highlighter {
@@ -1777,6 +1784,36 @@ body {
 .ink-color-dot.is-active {
   box-shadow: 0 0 0 2px #2563eb;
   transform: scale(1.12);
+}
+
+.ink-palette-sep {
+  width: 1px;
+  height: 14px;
+  background: var(--border-subtle);
+  margin: 0 2px;
+}
+
+.ink-width-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 3px;
+  cursor: pointer;
+}
+
+.ink-width-slider {
+  width: 58px;
+  height: 4px;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+
+.ink-width-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #475569;
+  min-width: 26px;
+  text-align: right;
 }
 
 .zoom-label {
