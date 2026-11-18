@@ -8,8 +8,10 @@ import {
 } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
 import {
   getFirestore,
+  collection,
   doc,
   getDoc,
+  getDocs,
   setDoc,
   serverTimestamp
 } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
@@ -76,6 +78,26 @@ export const FirebaseTextbook = {
   async signOutUser() {
     if (!auth) return;
     await signOut(auth);
+  },
+
+  async listTextbooks() {
+    if (!db) return [];
+    try {
+      const snap = await getDocs(collection(db, 'textbooks'));
+      const items = [];
+      snap.forEach((docSnap) => {
+        const d = docSnap.data() || {};
+        items.push({
+          id: docSnap.id,
+          title: d.title || docSnap.id,
+          pdfUrl: d.pdfUrl || ''
+        });
+      });
+      return items;
+    } catch (err) {
+      console.warn('Failed to list textbooks:', err);
+      return [];
+    }
   },
 
   async loadTextbook(bookId) {

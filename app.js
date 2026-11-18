@@ -42,6 +42,11 @@ const state = {
   contextTargetId: null,
   contextEmptyTarget: null,
   snapGuidesEnabled: true,
+  inkTool: null, // 'pen' | 'highlighter' | 'eraser' | null
+  inkColor: '#ef4444',
+  inkColorUserPicked: false,
+  pageInk: {}, // { [pageNum]: Array<{ id, tool, color, width, points }> }
+  availableBooks: [],
   user: null,
   renderTasks: { left: null, right: null }
 };
@@ -50,6 +55,12 @@ const state = {
 const el = {
   appShell: document.getElementById('appShell'),
   bookTitleInput: document.getElementById('bookTitleInput'),
+  bookSwitcher: document.getElementById('bookSwitcher'),
+  bookSwitcherBtn: document.getElementById('bookSwitcherBtn'),
+  bookSwitcherMenu: document.getElementById('bookSwitcherMenu'),
+  bookSwitcherList: document.getElementById('bookSwitcherList'),
+  viewerPdfOpenInput: document.getElementById('viewerPdfOpenInput'),
+  createNewBookSlotBtn: document.getElementById('createNewBookSlotBtn'),
   cloudStatusBadge: document.getElementById('cloudStatusBadge'),
   editorHeaderActions: document.getElementById('editorHeaderActions'),
   enterEditorBtn: document.getElementById('enterEditorBtn'),
@@ -94,6 +105,8 @@ const el = {
   rightSamplePage: document.getElementById('rightSamplePage'),
   leftLineSvg: document.getElementById('leftLineSvg'),
   rightLineSvg: document.getElementById('rightLineSvg'),
+  leftInkSvg: document.getElementById('leftInkSvg'),
+  rightInkSvg: document.getElementById('rightInkSvg'),
   leftOverlay: document.getElementById('leftOverlay'),
   rightOverlay: document.getElementById('rightOverlay'),
   leftGuideSvg: document.getElementById('leftGuideSvg'),
@@ -116,6 +129,12 @@ const el = {
   zoomOutBtn: document.getElementById('zoomOutBtn'),
   zoomInBtn: document.getElementById('zoomInBtn'),
   zoomResetBtn: document.getElementById('zoomResetBtn'),
+  viewerInkBar: document.getElementById('viewerInkBar'),
+  inkPenBtn: document.getElementById('inkPenBtn'),
+  inkHighlighterBtn: document.getElementById('inkHighlighterBtn'),
+  inkEraserBtn: document.getElementById('inkEraserBtn'),
+  inkPaletteWrap: document.getElementById('inkPaletteWrap'),
+  inkClearBtn: document.getElementById('inkClearBtn'),
   zoomLabel: document.getElementById('zoomLabel'),
   toggleLayoutBtn: document.getElementById('toggleLayoutBtn'),
   layoutLabel: document.getElementById('layoutLabel'),
@@ -303,6 +322,8 @@ function setMode(mode) {
   el.togglePageMgrBtn.hidden = !isEditor;
   el.tocEditorForm.hidden = !isEditor;
   el.bookTitleInput.readOnly = !isEditor;
+  el.viewerInkBar.hidden = isEditor;
+  el.createNewBookSlotBtn.hidden = !isEditor;
   updateCloudUi();
 
   if (!isEditor) {
@@ -312,6 +333,7 @@ function setMode(mode) {
     selectHotspot(null);
     clearAllAlignGuides();
   } else {
+    setInkTool(null);
     el.pdfPathInput.value = state.pdfUrl || '';
     selectHotspot(state.selectedId);
     showToast('편집자 모드입니다. 수정 후 상단 "클라우드 저장"을 눌러 반영하세요.');
@@ -1660,11 +1682,236 @@ function escapeHtml(str) {
     .replace(/'/g, '&#39;');
 }
 
+function getInkStorageKey() {
+  return `digital_textbook_ink_v1_${state.bookId}`;
+}
+
+function loadLocalInk() {
+  try {
+    const raw = localStorage.getItem(getInkStorageKey());
+    if (!raw) {
+      state.pageInk = {};
+      return;
+    }
+    const parsed = JSON.parse(raw);
+    state.pageInk = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    state.pageInk = {};
+  }
+}
+
+function persistLocalInk() {
+  try {
+    localStorage.setItem(getInkStorageKey(), JSON.stringify(state.pageInk));
+  } catch {
+    showToast('브라우저 필기 저장 공간이 부족합니다.');
+  }
+}
+
+function syncInkColorDots() {
+  document.querySelectorAll('.ink-color-dot[data-ink-color]').forEach((dot) => {
+    dot.classList.toggle(
+      'is-active',
+      dot.dataset.inkColor.toLowerCase() === state.inkColor.toLowerCase()
+    );
+  });
+}
+
+function setInkTool(tool) {
+  const next = state.inkTool === tool ? null : tool;
+  state.inkTool = next;
+  if (next === 'highlighter' && !state.inkColorUserPicked && state.inkColor === '#ef4444') {
+    state.inkColor = '#facc15';
+  } else if (next === 'pen' && !state.inkColorUserPicked && state.inkColor === '#facc15') {
+    state.inkColor = '#ef4444';
+  }
+  syncInkColorDots();
+
+  if (el.inkPenBtn) el.inkPenBtn.classList.toggle('is-active', next === 'pen');
+  if (el.inkHighlighterBtn) el.inkHighlighterBtn.classList.toggle('is-active', next === 'highlighter');
+  if (el.inkEraserBtn) el.inkEraserBtn.classList.toggle('is-active', next === 'eraser');
+  if (el.inkPaletteWrap) el.inkPaletteWrap.hidden = next !== 'pen' && next !== 'highlighter';
+  el.appShell.classList.toggle('is-ink-active', Boolean(next));
+}
+
+function buildInkPolylineNode(stroke) {
+  const pts = stroke.points.map((p) => `${p[0]},${p[1]}`).join(' ');
+  const attrs = {
+    points: pts,
+    fill: 'none',
+    stroke: stroke.color || '#ef4444',
+    'stroke-width': stroke.width || (stroke.tool === 'highlighter' ? 28 : 4.5),
+    'stroke-linecap': 'round',
+    'stroke-linejoin': 'round'
+  };
+  if (stroke.tool === 'highlighter') {
+    attrs.class = 'ink-stroke--highlighter';
+  }
+  return createSvgEl('polyline', attrs);
+}
+
+function renderInkLayer(svgEl, pageNum) {
+  if (!svgEl) return;
+  svgEl.innerHTML = '';
+  if (!pageNum) return;
+  const strokes = state.pageInk[String(pageNum)];
+  if (!Array.isArray(strokes) || strokes.length === 0) return;
+  for (const stroke of strokes) {
+    if (!Array.isArray(stroke.points) || stroke.points.length === 0) continue;
+    svgEl.appendChild(buildInkPolylineNode(stroke));
+  }
+}
+
+function clearCurrentInkPages() {
+  const { leftPage, rightPage } = getVisiblePages();
+  let removed = false;
+  [leftPage, rightPage].forEach((p) => {
+    if (p && Array.isArray(state.pageInk[String(p)]) && state.pageInk[String(p)].length > 0) {
+      delete state.pageInk[String(p)];
+      removed = true;
+    }
+  });
+  if (!removed) {
+    showToast('현재 페이지에 지울 필기가 없습니다.');
+    return;
+  }
+  persistLocalInk();
+  renderInkLayer(el.leftInkSvg, leftPage);
+  renderInkLayer(el.rightInkSvg, rightPage);
+  showToast('현재 페이지의 필기를 지웠습니다.');
+}
+
+function bindInkEvents(svgEl, getPageNum) {
+  if (!svgEl) return;
+  const toSvgCoord = (clientX, clientY) => {
+    const rect = svgEl.getBoundingClientRect();
+    if (!rect.width || !rect.height) return null;
+    const x = Math.min(1000, Math.max(0, ((clientX - rect.left) / rect.width) * 1000));
+    const y = Math.min(1000, Math.max(0, ((clientY - rect.top) / rect.height) * 1000));
+    return [Number(x.toFixed(1)), Number(y.toFixed(1))];
+  };
+
+  const eraseAt = (pageNum, pt) => {
+    const key = String(pageNum);
+    const list = state.pageInk[key];
+    if (!Array.isArray(list) || list.length === 0) return false;
+    const thresholdSq = 32 * 32;
+    const nextList = list.filter((stroke) => {
+      if (!Array.isArray(stroke.points)) return false;
+      return !stroke.points.some((p) => {
+        const dx = p[0] - pt[0];
+        const dy = p[1] - pt[1];
+        return dx * dx + dy * dy <= thresholdSq;
+      });
+    });
+    if (nextList.length === list.length) return false;
+    if (nextList.length === 0) delete state.pageInk[key];
+    else state.pageInk[key] = nextList;
+    renderInkLayer(svgEl, pageNum);
+    return true;
+  };
+
+  svgEl.addEventListener('pointerdown', (e) => {
+    if (state.mode !== 'viewer' || !state.inkTool) return;
+    if (e.button !== 0) return;
+    const pageNum = getPageNum();
+    if (!pageNum) return;
+    const startPt = toSvgCoord(e.clientX, e.clientY);
+    if (!startPt) return;
+
+    e.stopPropagation();
+    e.preventDefault();
+    try {
+      svgEl.setPointerCapture(e.pointerId);
+    } catch {
+      // Ignore if pointer capture is unsupported
+    }
+
+    let drawing = true;
+    let dirty = false;
+
+    if (state.inkTool === 'eraser') {
+      if (eraseAt(pageNum, startPt)) dirty = true;
+
+      const onMove = (ev) => {
+        if (!drawing) return;
+        const pt = toSvgCoord(ev.clientX, ev.clientY);
+        if (pt && eraseAt(pageNum, pt)) dirty = true;
+      };
+      const onUp = (ev) => {
+        drawing = false;
+        if (ev && ev.pointerId !== undefined) {
+          try {
+            svgEl.releasePointerCapture(ev.pointerId);
+          } catch {
+            // Ignore
+          }
+        }
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+        window.removeEventListener('pointercancel', onUp);
+        if (dirty) persistLocalInk();
+      };
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+      window.addEventListener('pointercancel', onUp);
+      return;
+    }
+
+    const stroke = {
+      id: `ink-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      tool: state.inkTool,
+      color: state.inkColor,
+      width: state.inkTool === 'highlighter' ? 28 : 4.5,
+      points: [startPt, startPt]
+    };
+    const key = String(pageNum);
+    if (!Array.isArray(state.pageInk[key])) {
+      state.pageInk[key] = [];
+    }
+    state.pageInk[key].push(stroke);
+    const polyNode = buildInkPolylineNode(stroke);
+    svgEl.appendChild(polyNode);
+    dirty = true;
+
+    const onMove = (ev) => {
+      if (!drawing) return;
+      const pt = toSvgCoord(ev.clientX, ev.clientY);
+      if (!pt) return;
+      const last = stroke.points[stroke.points.length - 1];
+      if (Math.hypot(pt[0] - last[0], pt[1] - last[1]) < 2.5) return;
+      stroke.points.push(pt);
+      polyNode.setAttribute('points', stroke.points.map((p) => `${p[0]},${p[1]}`).join(' '));
+    };
+
+    const onUp = (ev) => {
+      drawing = false;
+      if (ev && ev.pointerId !== undefined) {
+        try {
+          svgEl.releasePointerCapture(ev.pointerId);
+        } catch {
+          // Ignore
+        }
+      }
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+      if (dirty) persistLocalInk();
+    };
+
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+  });
+}
+
 function renderHotspots() {
   clearAllAlignGuides();
   const { leftPage, rightPage } = getVisiblePages();
   renderOverlay(el.leftOverlay, leftPage, el.leftLineSvg);
   renderOverlay(el.rightOverlay, rightPage, el.rightLineSvg);
+  renderInkLayer(el.leftInkSvg, leftPage);
+  renderInkLayer(el.rightInkSvg, rightPage);
   renderThumbnails();
   renderTocDrawer();
 }
@@ -2111,6 +2358,7 @@ function setZoom(nextZoom) {
 
 function setupStagePanning() {
   el.bookStage.addEventListener('pointerdown', (e) => {
+    if (state.inkTool && state.mode === 'viewer') return;
     if (state.zoom <= 1) return;
     if (state.activeTool) return;
     if (e.button !== 0) return;
@@ -2433,6 +2681,156 @@ function updateCloudUi() {
   }
 }
 
+function closeBookSwitcherMenu() {
+  if (el.bookSwitcherMenu) {
+    el.bookSwitcherMenu.hidden = true;
+  }
+}
+
+function renderBookSwitcherList() {
+  if (!el.bookSwitcherList) return;
+  el.bookSwitcherList.innerHTML = '';
+
+  const byId = new Map();
+  byId.set('dangjin-2026', {
+    id: 'dangjin-2026',
+    title: '2026 우리 고장 당진',
+    pdfUrl: './books/dangjin.pdf'
+  });
+  for (const item of state.availableBooks) {
+    if (item && item.id) byId.set(item.id, item);
+  }
+  if (!byId.has(state.bookId)) {
+    byId.set(state.bookId, {
+      id: state.bookId,
+      title: state.bookTitle || state.bookId,
+      pdfUrl: state.pdfUrl || ''
+    });
+  }
+
+  for (const book of byId.values()) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    const isCurrent = book.id === state.bookId;
+    btn.className = `book-switcher__item${isCurrent ? ' is-active' : ''}`;
+    btn.innerHTML = `<span>${escapeHtml(book.title || book.id)}</span>${
+      isCurrent ? '<span class="book-switcher__item-badge">현재 보기</span>' : ''
+    }`;
+    btn.addEventListener('click', () => {
+      closeBookSwitcherMenu();
+      if (book.id !== state.bookId || !state.pdfUrl) {
+        switchTextbook(book.id);
+      }
+    });
+    el.bookSwitcherList.appendChild(btn);
+  }
+}
+
+async function refreshBookList() {
+  try {
+    const remote = await FirebaseTextbook.listTextbooks();
+    state.availableBooks = Array.isArray(remote) ? remote : [];
+  } catch {
+    state.availableBooks = [];
+  }
+  renderBookSwitcherList();
+}
+
+async function switchTextbook(nextBookId) {
+  const cleanId = String(nextBookId || '').trim();
+  if (!cleanId) return;
+  closeBookSwitcherMenu();
+
+  const url = new URL(window.location.href);
+  if (cleanId === 'dangjin-2026') {
+    url.searchParams.delete('book');
+  } else {
+    url.searchParams.set('book', cleanId);
+  }
+  window.history.pushState(null, '', url.toString());
+
+  clearPageRenderCache();
+  state.bookId = cleanId;
+  state.pdfDoc = null;
+  state.pdfUrl = '';
+  state.hotspots = [];
+  state.tocItems = [];
+  state.revealedAnswers.clear();
+  state.isLoadingBook = true;
+  state.allowSampleFallback = false;
+  state.bookTitle = cleanId === 'dangjin-2027' ? '2027 우리 고장 당진' : cleanId === 'dangjin-2026' ? '2026 우리 고장 당진' : cleanId;
+  el.bookTitleInput.value = state.bookTitle;
+  el.pdfPathInput.value = '';
+  loadLocalInk();
+  renderBookSwitcherList();
+  await renderSpread();
+  await loadFromCloud();
+}
+
+async function handleViewerLocalPdfUpload(file) {
+  if (!file) return;
+  if (!window.pdfjsLib) {
+    showToast('PDF.js 라이브러리를 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.');
+    return;
+  }
+  try {
+    closeBookSwitcherMenu();
+    showToast('선택한 PDF 파일을 불러오는 중입니다...');
+    const buffer = await file.arrayBuffer();
+    const doc = await window.pdfjsLib.getDocument({ data: buffer }).promise;
+    state.pdfUrl = '';
+    state.hotspots = [];
+    state.tocItems = [];
+    state.revealedAnswers.clear();
+    state.pageInk = {};
+    await applyLoadedPdfDoc(doc, file.name.replace(/\.pdf$/i, ''), false);
+    renderBookSwitcherList();
+    showToast('선택한 PDF 파일을 화면에 불러왔습니다 (내 화면 전용).');
+  } catch (err) {
+    console.error(err);
+    showToast('PDF 파일을 열 수 없습니다. 파일 형식을 확인해 주세요.');
+  }
+}
+
+async function handleCreateNewBookSlot() {
+  if (state.mode !== 'editor') return;
+  closeBookSwitcherMenu();
+  const rawId = window.prompt(
+    '새 교과서의 고유 ID를 입력하세요 (영문·숫자·하이픈만 사용, 예: dangjin-2027):',
+    'dangjin-2027'
+  );
+  if (!rawId) return;
+  const cleanId = rawId.trim().replace(/[^a-zA-Z0-9_-]/g, '');
+  if (!cleanId) {
+    showToast('유효한 영문/숫자 ID를 입력해 주세요.');
+    return;
+  }
+  const rawTitle = window.prompt('새 교과서 제목을 입력하세요:', `${cleanId} 우리 고장 당진`);
+  const cleanTitle = (rawTitle || cleanId).trim();
+
+  const url = new URL(window.location.href);
+  url.searchParams.set('book', cleanId);
+  window.history.pushState(null, '', url.toString());
+
+  clearPageRenderCache();
+  state.bookId = cleanId;
+  state.pdfDoc = null;
+  state.pdfUrl = `./books/${cleanId}.pdf`;
+  state.bookTitle = cleanTitle;
+  state.hotspots = [];
+  state.tocItems = [];
+  state.revealedAnswers.clear();
+  state.isLoadingBook = false;
+  state.allowSampleFallback = false;
+  el.bookTitleInput.value = cleanTitle;
+  el.pdfPathInput.value = state.pdfUrl;
+  loadLocalInk();
+  renderBookSwitcherList();
+  await renderSpread();
+  await loadPdfFromUrl(state.pdfUrl, false);
+  showToast(`새 교과서 "${cleanTitle}" 슬롯을 열었습니다. PDF를 연결하고 "클라우드 저장"을 눌러 주세요.`);
+}
+
 async function handleCloudSave() {
   if (!FirebaseTextbook.isConfigured()) {
     showToast('Firebase 설정이 연결되지 않았습니다.');
@@ -2471,6 +2869,7 @@ async function handleCloudSave() {
     persistState();
     el.cloudStatusBadge.textContent = '클라우드 저장됨';
     el.cloudStatusBadge.classList.add('is-online');
+    await refreshBookList();
     showToast('Firebase 클라우드에 저장되었습니다! 이제 모든 방문자에게 반영됩니다.');
   } catch (err) {
     console.error(err);
@@ -2490,7 +2889,7 @@ async function handleCloudSave() {
 
 async function loadFromCloud() {
   const defaultPath = './books/dangjin.pdf';
-  const speculativeUrl = state.pdfUrl || defaultPath;
+  const speculativeUrl = state.pdfUrl || (state.bookId === 'dangjin-2026' ? defaultPath : '');
   const speculativeDocPromise =
     speculativeUrl && window.pdfjsLib
       ? window.pdfjsLib.getDocument(speculativeUrl).promise.catch(() => null)
@@ -2521,6 +2920,7 @@ async function loadFromCloud() {
       state.hotspots = cloneSampleHotspots();
       await renderSpread();
     }
+    renderBookSwitcherList();
     return;
   }
 
@@ -2535,12 +2935,17 @@ async function loadFromCloud() {
       if (isOnlySample) {
         state.hotspots = [];
       }
-      const loaded = await applyPdfWithSpeculative(defaultPath, false);
+      const candidatePath = state.pdfUrl || defaultPath;
+      const loaded = await applyPdfWithSpeculative(candidatePath, false);
       state.isLoadingBook = false;
       if (loaded) {
-        state.pdfUrl = defaultPath;
-        el.pdfPathInput.value = defaultPath;
-        state.bookTitle = BOOK_ID === 'dangjin-2027' ? '2027 우리 고장 당진' : '2026 우리 고장 당진';
+        state.pdfUrl = candidatePath;
+        el.pdfPathInput.value = candidatePath;
+        if (state.bookId === 'dangjin-2026') {
+          state.bookTitle = '2026 우리 고장 당진';
+        } else if (state.bookId === 'dangjin-2027') {
+          state.bookTitle = '2027 우리 고장 당진';
+        }
         el.bookTitleInput.value = state.bookTitle;
         persistState();
       } else {
@@ -2550,6 +2955,7 @@ async function loadFromCloud() {
         state.hotspots = cloneSampleHotspots();
         await renderSpread();
       }
+      await refreshBookList();
       return;
     }
 
@@ -2585,11 +2991,12 @@ async function loadFromCloud() {
       state.allowSampleFallback = true;
       await renderSpread();
     }
+    await refreshBookList();
   } catch (err) {
     console.error(err);
     el.cloudStatusBadge.textContent = '연결 오류(로컬)';
     el.cloudStatusBadge.classList.remove('is-online');
-    const ok = await applyPdfWithSpeculative(speculativeUrl, Boolean(state.activePages.length > 2));
+    const ok = await applyPdfWithSpeculative(speculativeUrl || defaultPath, Boolean(state.activePages.length > 2));
     state.isLoadingBook = false;
     if (!ok) {
       state.allowSampleFallback = true;
@@ -2598,6 +3005,7 @@ async function loadFromCloud() {
       if (state.hotspots.length === 0) state.hotspots = cloneSampleHotspots();
       await renderSpread();
     }
+    renderBookSwitcherList();
   }
 }
 
@@ -3124,6 +3532,41 @@ function bindEvents() {
     }
   });
 
+  // Observer ink tools (local only)
+  el.inkPenBtn.addEventListener('click', () => setInkTool('pen'));
+  el.inkHighlighterBtn.addEventListener('click', () => setInkTool('highlighter'));
+  el.inkEraserBtn.addEventListener('click', () => setInkTool('eraser'));
+  el.inkClearBtn.addEventListener('click', clearCurrentInkPages);
+  document.querySelectorAll('.ink-color-dot[data-ink-color]').forEach((dot) => {
+    dot.addEventListener('click', () => {
+      state.inkColor = dot.dataset.inkColor;
+      state.inkColorUserPicked = true;
+      syncInkColorDots();
+    });
+  });
+  bindInkEvents(el.leftInkSvg, () => getVisiblePages().leftPage);
+  bindInkEvents(el.rightInkSvg, () => getVisiblePages().rightPage);
+
+  // Textbook switcher dropdown
+  el.bookSwitcherBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const nextOpen = el.bookSwitcherMenu.hidden;
+    el.bookSwitcherMenu.hidden = !nextOpen;
+    if (nextOpen) {
+      refreshBookList();
+    }
+  });
+  document.addEventListener('click', (e) => {
+    if (!el.bookSwitcherMenu.hidden && !e.target.closest('#bookSwitcher')) {
+      closeBookSwitcherMenu();
+    }
+  });
+  el.viewerPdfOpenInput.addEventListener('change', (e) => {
+    handleViewerLocalPdfUpload(e.target.files[0]);
+    e.target.value = '';
+  });
+  el.createNewBookSlotBtn.addEventListener('click', handleCreateNewBookSlot);
+
   el.closeModalBtn.addEventListener('click', closeModal);
   el.contentModal.addEventListener('click', (e) => {
     if (e.target === el.contentModal) closeModal();
@@ -3133,6 +3576,7 @@ function bindEvents() {
     if (e.key === 'Escape') {
       closeModal();
       closeHotspotContextMenu();
+      closeBookSwitcherMenu();
     }
     const tag = e.target.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target.isContentEditable) return;
@@ -3174,6 +3618,7 @@ function bindEvents() {
 
 async function init() {
   loadSavedState();
+  loadLocalInk();
   if (window.innerWidth <= 640) {
     state.zoom = 1.0;
     state.layout = 'single';
@@ -3182,6 +3627,7 @@ async function init() {
   el.pdfPathInput.value = state.pdfUrl || '';
   applyZoomAndPan();
   el.zoomLabel.textContent = `${Math.round(state.zoom * 100)}%`;
+  renderBookSwitcherList();
   bindEvents();
   await renderSpread();
 

@@ -97,6 +97,135 @@ body {
   outline: 2px solid var(--primary);
 }
 
+/* Textbook Switcher Dropdown */
+.book-switcher {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.book-switcher__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+  background: #f8fafc;
+  color: #334155;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.14s ease, border-color 0.14s ease;
+}
+
+.book-switcher__btn:hover {
+  background: #eff6ff;
+  border-color: #93c5fd;
+  color: var(--primary);
+}
+
+.book-switcher__menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 260px;
+  max-width: min(320px, 90vw);
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  padding: 8px;
+  box-shadow: 0 16px 38px rgba(15, 23, 42, 0.22);
+  z-index: 120;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.book-switcher__section-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  padding: 4px 8px 2px;
+}
+
+.book-switcher__list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.book-switcher__item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-main);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.book-switcher__item:hover {
+  background: #f1f5f9;
+}
+
+.book-switcher__item.is-active {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  color: var(--primary);
+  font-weight: 700;
+}
+
+.book-switcher__item-badge {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #2563eb;
+  background: #dbeafe;
+  padding: 2px 6px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.book-switcher__divider {
+  height: 1px;
+  background: var(--border-subtle);
+  margin: 4px 2px;
+}
+
+.book-switcher__action {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #334155;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.book-switcher__action:hover {
+  background: #eff6ff;
+  color: var(--primary);
+}
+
 /* Mode Switch */
 .mode-switch {
   display: inline-flex;
@@ -834,6 +963,28 @@ body {
 .app-shell.is-editor .page-slot:not(.is-empty) .page-delete-btn {
   display: inline-flex;
   align-items: center;
+}
+
+/* Local Observer Ink Drawing SVG Layer */
+.ink-svg-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 6;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.app-shell.is-ink-active .ink-svg-layer {
+  pointer-events: auto;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.ink-stroke--highlighter {
+  mix-blend-mode: multiply;
+  opacity: 0.38;
 }
 
 /* Interactive Hotspot Overlay */
@@ -1578,6 +1729,56 @@ body {
   color: var(--text-main);
 }
 
+/* Observer Pen & Highlighter Bar */
+.viewer-ink-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ink-divider {
+  width: 1px;
+  height: 18px;
+  background: var(--border-subtle);
+  margin: 0 3px;
+}
+
+.ink-tool-btn.is-active {
+  background: #eff6ff;
+  border-color: #93c5fd;
+  color: var(--primary);
+}
+
+.ink-palette-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 5px;
+  border-radius: 999px;
+  background: #f8fafc;
+  border: 1px solid var(--border-subtle);
+}
+
+.ink-color-dot {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid #ffffff;
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.25);
+  cursor: pointer;
+  transition: transform 0.12s ease;
+}
+
+.ink-color-dot:hover {
+  transform: scale(1.15);
+}
+
+.ink-color-dot.is-active {
+  box-shadow: 0 0 0 2px #2563eb;
+  transform: scale(1.12);
+}
+
 .zoom-label {
   font-size: 12px;
   font-weight: 700;
@@ -1994,6 +2195,20 @@ body {
     flex: 1;
     font-size: 13.5px;
     padding: 3px 6px;
+  }
+  .book-switcher__btn {
+    padding: 4px 7px;
+    font-size: 11px;
+    gap: 3px;
+  }
+  .viewer-ink-bar {
+    gap: 2px;
+  }
+  .ink-divider {
+    display: none;
+  }
+  .ink-tool-btn span {
+    display: none;
   }
   .top-bar__right .btn {
     padding: 5px 9px;
